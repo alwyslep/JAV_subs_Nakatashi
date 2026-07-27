@@ -18,7 +18,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('restore', 'build', 'test', 'publish', 'mpv', 'run', 'clean', 'all')]
+    [ValidateSet('restore', 'build', 'test', 'publish', 'mpv', 'run', 'clean', 'menu-baseline', 'all')]
     [string]$Task = 'build',
 
     [ValidateSet('Debug', 'Release')]
@@ -186,6 +186,32 @@ function Task-Publish {
     }
 }
 
+# Regenerates the main-menu command inventory baseline (the fork's guard against a menu
+# re-group silently dropping a feature). Deleting the file makes the test write a fresh one
+# and fail on purpose; a baseline that exists again afterwards is the success signal.
+function Task-MenuBaseline {
+    $baseline = Join-Path $RepoRoot 'tests/UI/Features/Main/Layout/main-menu-inventory.baseline.txt'
+    Write-Step 'Regenerating main-menu inventory baseline'
+
+    if (Test-Path $baseline) {
+        Remove-Item -LiteralPath $baseline -Force
+    }
+
+    Write-Host '    dotnet test --filter MainMenu_RetainsEveryBaselineCommand' -ForegroundColor DarkGray
+    Write-Host '    (one [FAIL] line below is expected - that is the test writing the file)' -ForegroundColor DarkGray
+    & dotnet test (Join-Path $RepoRoot 'tests/UI/UITests.csproj') `
+        --configuration $Configuration `
+        --filter 'FullyQualifiedName~MainMenu_RetainsEveryBaselineCommand' | Out-Null
+
+    if (-not (Test-Path $baseline)) {
+        throw "Baseline was not regenerated. Run the test directly to see why: $baseline"
+    }
+
+    $count = (Get-Content $baseline | Where-Object { $_ -and -not $_.StartsWith('#') }).Count
+    Write-Host "    Wrote $count commands to $baseline" -ForegroundColor Green
+    Write-Host '    Review the diff before committing — a REMOVED line means lost functionality.' -ForegroundColor Yellow
+}
+
 function Task-Run {
     Write-Step "dotnet run ($Configuration)"
     Invoke-Checked dotnet @('run', '--project', $UiProject, '-c', $Configuration)
@@ -214,6 +240,7 @@ try {
         'mpv'     { Task-Mpv | Out-Null }
         'run'     { Task-Run }
         'clean'   { Task-Clean }
+        'menu-baseline' { Task-MenuBaseline }
         'all'     { Task-Restore; $script:NoRestore = $true; Task-Build; Task-Test; Task-Publish }
     }
     Write-Host ''
@@ -222,3 +249,9 @@ try {
 finally {
     Pop-Location
 }
+
+# Tasks that intentionally tolerate a failing child process (menu-baseline runs a test that is
+# *supposed* to fail while it writes the file) would otherwise leak that non-zero $LASTEXITCODE
+# out of the script and make callers think the build failed. Reaching here means success; any
+# real failure threw and never got this far.
+exit 0
