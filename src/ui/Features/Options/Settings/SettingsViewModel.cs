@@ -27,6 +27,7 @@ using Nikse.SubtitleEdit.Features.Video.BurnIn;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.Media;
+using Nikse.SubtitleEdit.Logic.Theming.Nakatashi;
 using Nikse.SubtitleEdit.Logic.VideoPlayers.LibMpvDynamic;
 using System;
 using System.Collections.Generic;
@@ -425,7 +426,8 @@ public partial class SettingsViewModel : ObservableObject
         MpvPreviewSelectedFontAlignment = MpvPreviewFontAlignments[7];
         LibVlcStatus = string.Empty;
 
-        Themes = [Se.Language.General.System, Se.Language.General.Light, Se.Language.General.Dark, Se.Language.General.Classic, "Pastel"];
+        // Fork (Nakatashi): the two Deep Gray variants ship alongside the stock themes.
+        Themes = [Se.Language.General.System, Se.Language.General.Light, Se.Language.General.Dark, Se.Language.General.Classic, "Pastel", NakatashiTheme.ThemeNameCharcoal, NakatashiTheme.ThemeNameBlue];
         SelectedTheme = Themes[0];
 
         var iconFolders = Directory.GetDirectories(Se.ThemesFolder).Select(p => Path.GetFileName(p)).ToList();
@@ -1211,6 +1213,11 @@ public partial class SettingsViewModel : ObservableObject
         {
             return UiTheme.ThemeNamePastel;
         }
+        else if (NakatashiTheme.IsNakatashiThemeName(translation))
+        {
+            // Fork (Nakatashi): stored name == display string, like Pastel.
+            return translation;
+        }
         else
         {
             return UiTheme.ThemeNameSystem;
@@ -1238,6 +1245,11 @@ public partial class SettingsViewModel : ObservableObject
         else if (theme == UiTheme.ThemeNamePastel)
         {
             return "Pastel";
+        }
+        else if (NakatashiTheme.IsNakatashiThemeName(theme))
+        {
+            // Fork (Nakatashi): stored name == display string, like Pastel.
+            return theme;
         }
         else
         {

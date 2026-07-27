@@ -14,15 +14,17 @@ internal static class PluginThemeColorsFactory
     {
         var appearance = Se.Settings.Appearance;
         var themeName = UiTheme.ThemeName;
-        var isDark = themeName == UiTheme.ThemeNameDark;
+        // Fork (Nakatashi): route through the shared predicate so plugins see Nakatashi as dark;
+        // the theme-aware getters below return the Nakatashi palette while it is active.
+        var isDark = UiTheme.IsDarkThemeEnabled();
 
         Color background;
         Color foreground;
 
         if (isDark)
         {
-            background = appearance.DarkModeBackgroundColor.FromHexToColor();
-            foreground = appearance.DarkModeForegroundColor.FromHexToColor();
+            background = UiTheme.GetDarkThemeBackgroundColor();
+            foreground = UiTheme.GetDarkThemeForegroundColor();
         }
         else if (themeName == UiTheme.ThemeNameClassic)
         {

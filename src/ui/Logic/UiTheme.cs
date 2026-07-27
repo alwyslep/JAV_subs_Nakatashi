@@ -11,6 +11,7 @@ using Avalonia.VisualTree;
 using AvaloniaEdit;
 using AvaloniaEdit.Editing;
 using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.Theming.Nakatashi;
 using System;
 using System.IO;
 using System.Linq;
@@ -59,7 +60,9 @@ public static class UiTheme
 
     public static bool IsDarkThemeEnabled()
     {
-        return ThemeName == ThemeNameDark;
+        // Fork (Nakatashi): the Nakatashi variants are dark themes; widening this single
+        // predicate makes every downstream is-dark consumer inherit them.
+        return ThemeName == ThemeNameDark || NakatashiTheme.IsNakatashiThemeName(ThemeName);
     }
 
     /// <summary>
@@ -104,6 +107,7 @@ public static class UiTheme
         }
 
         RemoveLighterDark();
+        NakatashiTheme.Remove(); // Fork (Nakatashi): clean up like RemoveLighterDark when switching away
 
         if (themeSetting == ThemeNameSystem)
         {
@@ -141,6 +145,13 @@ public static class UiTheme
         {
             Application.Current!.RequestedThemeVariant = ThemeVariant.Light;
             ApplyPastel();
+        }
+        else if (NakatashiTheme.TryGetPalette(themeSetting, out var nakatashiPalette))
+        {
+            // Fork (Nakatashi): dark variant is required - most theme-sensitive code checks
+            // ActualThemeVariant, and only the Dark variant makes those sites render dark.
+            Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+            NakatashiTheme.Apply(nakatashiPalette);
         }
         else
         {
@@ -1009,13 +1020,27 @@ public static class UiTheme
         Application.Current.Styles.Add(_themeOverrideStyle);
     }
 
-    private static Color GetDarkThemeBackgroundColor()
+    // Fork (Nakatashi): both getters are theme-aware - while a Nakatashi theme is active they
+    // return its fixed palette instead of the user-configurable Dark colors, so the two dark
+    // themes stay decoupled (region color, icon recolor, plugin colors all route through here).
+    // Public because UiUtil's copy delegates to this one.
+    public static Color GetDarkThemeBackgroundColor()
     {
+        if (NakatashiTheme.TryGetPalette(ThemeName, out var nakatashiPalette))
+        {
+            return nakatashiPalette.Base;
+        }
+
         return Se.Settings.Appearance.DarkModeBackgroundColor.FromHexToColor();
     }
 
     public static Color GetDarkThemeForegroundColor()
     {
+        if (NakatashiTheme.TryGetPalette(ThemeName, out var nakatashiPalette))
+        {
+            return nakatashiPalette.TextPrimary;
+        }
+
         return Se.Settings.Appearance.DarkModeForegroundColor.FromHexToColor();
     }
 }
