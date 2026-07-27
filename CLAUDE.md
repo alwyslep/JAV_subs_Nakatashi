@@ -80,8 +80,47 @@ Hard-won facts (adversarial review, all probe-verified — do not re-derive):
 - macOS never activates the chain (FontName defaults to "Helvetica Neue" — an explicit choice
   that also works around the caret bug).
 
-Roadmap: ~~1 palette/surfaces~~ → ~~2 typography~~ → 3 accent gradient + translucent overlays →
-4 menu re-grouping.
+**Done:** Phase 3 (2026-07-27) — accent gradient + translucent overlays. The Gemini-glow
+gradient (`#4A77FF → #A374FF → #FF8A75`, palette slots AccentStart/Mid/End) paints ACTIVE
+states only, via `DynamicResource` brush-key overrides in `NakatashiTheme.Apply` (recon
+verified every key against the extracted Fluent/DataGrid 12.1 axaml): TextBox/ComboBox focus
+borders, the app-wide keyboard-focus adorner (2px ring, secondary transparent), menu
+highlight (subtle 0x30/0x48 tints + 6px chip), DataGrid/ListBox/ComboBox/TreeView selection,
+the selected-tab pipe, ToggleButton `:checked` (solid AccentStart — gradient on a 24px pill
+reads as mush), TextBox selection highlight (translucent solid AccentMid — a relative
+gradient restarts per selection rectangle), and the focused dialog button (0x46 gradient wash
+via the `UiUtil.GetFocusedButtonBackgroundBrush` hook — the per-button `:focus` style
+outranks app styles, so the swap must live in the getter). Floating layers (menus, submenus,
+flyouts, ComboBox dropdowns) are translucent Elevated at 0xE0 with a `PopupRoot`
+`TransparencyBackgroundFallback` hardening; popups composite per-pixel alpha by default
+(decompile-verified: Fluent PopupRoot requests Transparent; the rounded menu corners already
+rely on it).
+
+Decisions + hard-won facts (adversarial review, probe-verified — do not re-derive):
+- **Parse-time alias trap**: FluentControlResources aliases are `<StaticResource>` copies —
+  overriding an underlying SystemControl* key never propagates through an alias. Every alias
+  must be overridden by its own name (`ComboBoxBackgroundUnfocused`, all three
+  `ComboBoxItemBackgroundSelected*` incl. Pressed, all three `TreeViewItemBackgroundSelected*`).
+- **AA contrast split**: fill surfaces under primary text use the darker warm end
+  `AccentEndFill #D9705C` (full coral at the stock 0.6 selection opacity = 4.2:1 vs
+  TextPrimary — below AA; the fill stop lands ~5.2:1). Rings/borders keep full `#FF8A75`
+  (7.66:1 vs Base). Banked numbers: menu tint 0x30 over the 0xE0 layer = ΔE 15-20 vs resting,
+  text 8.8-10:1; 0xE0 popup over pure white keeps 8.26:1; 0x46 button wash quieter than
+  upstream's 0x63 blue yet more readable.
+- **ToolTip stays opaque** (sits directly over the exact text it explains) — do not "fix" it
+  to match the translucent menus. **No BoxShadow on popups**: a shadow needs a margin gutter
+  that shifts menus ~8px off their anchor; deferred, not forgotten.
+- **Accepted scope**: CheckBox/RadioButton/ToggleSwitch glyph fills and Slider/ProgressBar
+  value tracks stay stock accent (neutral micro-controls, gradient would be noise). Modeless
+  Find/Replace/AdjustAllTimes windows keep the previous theme's focused-button brush across a
+  mid-session theme switch (widens an existing upstream staleness class; self-heals on
+  reopen). Plugins get `AccentColor` = AccentMid hex while Nakatashi is active (a single hex
+  cannot express a gradient).
+- Phase 1's "UiUtil.cs 2-line delegation" note is superseded: UiUtil.cs now also carries the
+  commented FocusedButtonBrush hook.
+
+Roadmap: ~~1 palette/surfaces~~ → ~~2 typography~~ → ~~3 accent gradient + translucent
+overlays~~ → 4 menu re-grouping.
 
 `.claude/settings.json` holds a permission allowlist for the usual dotnet/git commands. Upstream's
 `.gitignore` excludes `.claude/`, so it is **local-only and not in the repo** — recreate it by hand

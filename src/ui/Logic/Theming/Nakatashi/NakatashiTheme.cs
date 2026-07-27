@@ -82,6 +82,54 @@ public static class NakatashiTheme
                && IsDefaultFontSentinel(Se.Settings.Appearance.FontName);
     }
 
+    /// <summary>
+    /// Set while a Nakatashi theme is active: UiUtil.GetFocusedButtonBackgroundBrush returns
+    /// this instead of the user's translucent-blue fill, so every dialog's focused button
+    /// speaks the theme's accent-gradient language. Null while any other theme is active.
+    /// The per-button Button:focus style UiUtil.MakeButton installs outranks app-level theme
+    /// styles, which is why this hooks the brush getter rather than adding a style.
+    /// </summary>
+    public static IBrush? FocusedButtonBrush { get; private set; }
+
+    private static Color WithAlpha(Color c, byte a)
+    {
+        return Color.FromArgb(a, c.R, c.G, c.B);
+    }
+
+    /// <summary>
+    /// The Gemini-glow gradient (AccentStart → AccentMid → AccentEnd, left to right).
+    /// <paramref name="alpha"/> bakes translucency into the stops (for subtle tints);
+    /// <paramref name="opacity"/> mirrors how Fluent's stock selection brushes carry
+    /// their dimming in Brush.Opacity (0.6 low / 0.8 medium), so overrides keep the
+    /// same perceived strength as the accent brushes they replace.
+    /// </summary>
+    private static LinearGradientBrush MakeGradient(Color start, Color mid, Color end, byte alpha, double opacity)
+    {
+        return new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
+            Opacity = opacity,
+            GradientStops =
+            {
+                new GradientStop(WithAlpha(start, alpha), 0),
+                new GradientStop(WithAlpha(mid, alpha), 0.5),
+                new GradientStop(WithAlpha(end, alpha), 1),
+            },
+        };
+    }
+
+    private static LinearGradientBrush MakeAccentGradient(NakatashiPalette p, byte alpha = 0xFF, double opacity = 1.0)
+    {
+        return MakeGradient(p.AccentStart, p.AccentMid, p.AccentEnd, alpha, opacity);
+    }
+
+    /// <summary>Fill-surface variant: darker warm end for AA text contrast (see AccentEndFill).</summary>
+    private static LinearGradientBrush MakeAccentFillGradient(NakatashiPalette p, byte alpha = 0xFF, double opacity = 1.0)
+    {
+        return MakeGradient(p.AccentStart, p.AccentMid, p.AccentEndFill, alpha, opacity);
+    }
+
     public static bool IsNakatashiThemeName(string? themeName)
     {
         return themeName == ThemeNameCharcoal || themeName == ThemeNameBlue;
@@ -120,10 +168,42 @@ public static class NakatashiTheme
         var surfaceBrush = new SolidColorBrush(p.Surface);
         var surfaceHoverBrush = new SolidColorBrush(p.SurfaceHover);
         var surfacePressedBrush = new SolidColorBrush(p.SurfacePressed);
-        var elevatedBrush = new SolidColorBrush(p.Elevated);
+
+        // Claude-desktop translucent floating layer. Real backdrop blur is impossible in-app
+        // (class doc), so popups use per-pixel alpha over whatever is beneath instead - popup
+        // windows composite alpha by default (Fluent's PopupRoot requests Transparent, and the
+        // rounded menu corners already rely on it). 0xE0 (~88%) keeps text ≥7:1 contrast even
+        // when a menu overhangs the window onto bright content.
+        var elevatedBrush = new SolidColorBrush(Color.FromArgb(0xE0, p.Elevated.R, p.Elevated.G, p.Elevated.B));
+        var elevatedOpaqueBrush = new SolidColorBrush(p.Elevated);
         var headerBrush = new SolidColorBrush(p.Header);
         var borderSubtleBrush = new SolidColorBrush(p.BorderSubtle);
         var borderStrongBrush = new SolidColorBrush(p.BorderStrong);
+
+        // Full coral end = rings/borders/pipes only; fill surfaces under primary text use the
+        // darker AccentEndFill terminus (AA - see the palette doc). Brush.Opacity mirrors the
+        // stock accent brushes' built-in 0.6/0.8 selection dimming.
+        var accentGradient = MakeAccentGradient(p);
+        var accentMenuTint = MakeAccentGradient(p, 0x30);
+        var accentMenuTintPressed = MakeAccentGradient(p, 0x48);
+        var accentFill = MakeAccentFillGradient(p);
+        var accentFillLow = MakeAccentFillGradient(p, opacity: 0.6);
+        var accentFillMedium = MakeAccentFillGradient(p, opacity: 0.8);
+        var accentFillFaint = MakeAccentFillGradient(p, opacity: 0.25);
+
+        // TextBox selection: a relative gradient restarts per selection rectangle (looks broken
+        // across wrapped lines), so selection is a translucent solid accent instead.
+        var selectionHighlightBrush = new SolidColorBrush(WithAlpha(p.AccentMid, 0x59));
+
+        // ToggleButton :checked (waveform toolbar pills): stock Fluent paints the raw OS
+        // personalization accent (an arbitrary user color); a gradient on a ~24px pill reads
+        // as mush, so checked state is the solid theme accent.
+        var toggleCheckedBrush = new SolidColorBrush(p.AccentStart);
+        var toggleCheckedHoverBrush = new SolidColorBrush(UiUtil.LightenColor(p.AccentStart, 24));
+        var toggleCheckedPressedBrush = new SolidColorBrush(Color.FromRgb(
+            (byte)(p.AccentStart.R * 3 / 4), (byte)(p.AccentStart.G * 3 / 4), (byte)(p.AccentStart.B * 3 / 4)));
+
+        FocusedButtonBrush = MakeAccentGradient(p, 0x46);
 
         _resources = new ResourceDictionary
         {
@@ -148,9 +228,71 @@ public static class NakatashiTheme
             ["ButtonBorderBrushPointerOver"] = borderStrongBrush,
             ["ButtonBorderBrushPressed"] = borderStrongBrush,
 
-            // Menu popups float on the Elevated layer with a hairline edge.
+            // Menu popups float on the (translucent) Elevated layer with a hairline edge.
             ["MenuFlyoutPresenterBackground"] = elevatedBrush,
             ["MenuFlyoutPresenterBorderBrush"] = borderSubtleBrush,
+
+            // ComboBox dropdowns share the floating layer; tooltips sit directly over the
+            // exact text they explain, so pin them opaque.
+            ["ComboBoxDropDownBackground"] = elevatedBrush,
+            ["ToolTipBackground"] = elevatedOpaqueBrush,
+
+            // ---- Gemini-glow accent: ACTIVE elements only (focus/selection/menu highlight).
+            // Every key below lands on a Border/ContentPresenter/Rectangle via DynamicResource,
+            // all of which accept a gradient IBrush (recon-verified against Fluent 12.1).
+
+            // Focused TextBox border (TextBox nulls its FocusAdorner - this IS the focus visual).
+            ["TextControlBorderBrushFocused"] = accentGradient,
+
+            // ComboBox keyboard-focus ring; the second key is Fluent's accent flood-fill behind
+            // it, a parse-time alias that must be overridden by its own name or it drowns the ring.
+            ["ComboBoxBackgroundBorderBrushFocused"] = accentGradient,
+            ["ComboBoxBackgroundUnfocused"] = Brushes.Transparent,
+
+            // App-wide keyboard-focus adorner (Button, CheckBox, ListBoxItem...): one 2px
+            // gradient ring instead of Fluent's black+white double outline.
+            ["SystemControlFocusVisualPrimaryBrush"] = accentGradient,
+            ["SystemControlFocusVisualSecondaryBrush"] = Brushes.Transparent,
+
+            // Menu highlight - hover and keyboard both map to :selected on every menu surface
+            // (top bar, context menus, submenus). Subtle tint, per the reference ("은은한").
+            ["MenuFlyoutItemBackgroundPointerOver"] = accentMenuTint,
+            ["MenuFlyoutItemBackgroundPressed"] = accentMenuTintPressed,
+
+            // Subtitle grid selected rows - the accent users stare at all day. Styles.axaml's
+            // opacity keys (0.6 focused / 0.2 unfocused) keep dimming the gradient uniformly.
+            ["DataGridRowSelectedBackgroundBrush"] = accentFill,
+            ["DataGridRowSelectedHoveredBackgroundBrush"] = accentFill,
+            ["DataGridRowSelectedUnfocusedBackgroundBrush"] = accentFill,
+            ["DataGridRowSelectedHoveredUnfocusedBackgroundBrush"] = accentFill,
+
+            // ListBox selection - Styles.axaml consumes these same keys via DynamicResource.
+            ["SystemControlHighlightListAccentLowBrush"] = accentFillLow,
+            ["SystemControlHighlightListAccentMediumBrush"] = accentFillMedium,
+            ["SystemControlHighlightListAccentHighBrush"] = accentFill,
+            ["ListBoxItemSelectedUnfocusedBackgroundBrush"] = accentFillFaint,
+
+            // ComboBox dropdown items match the ListBox look. All three states are parse-time
+            // aliases that must be overridden by their own names - Pressed included, or pressing
+            // the selected item flashes the raw OS accent (probe-verified).
+            ["ComboBoxItemBackgroundSelected"] = accentFillLow,
+            ["ComboBoxItemBackgroundSelectedPointerOver"] = accentFillMedium,
+            ["ComboBoxItemBackgroundSelectedPressed"] = accentFill,
+
+            // TreeView (Multiple Replace groups, ASSA draw): selected keys are parse-time
+            // aliases to the raw OS accent - override by name or selection stays OS-colored.
+            ["TreeViewItemBackgroundSelected"] = accentFillLow,
+            ["TreeViewItemBackgroundSelectedPointerOver"] = accentFillMedium,
+            ["TreeViewItemBackgroundSelectedPressed"] = accentFill,
+
+            // Selected-tab pipe: short horizontal strip, takes the full gradient cleanly.
+            ["TabItemHeaderSelectedPipeFill"] = accentGradient,
+
+            // Remaining OS-accent active states in the primary editing view.
+            ["ToggleButtonBackgroundChecked"] = toggleCheckedBrush,
+            ["ToggleButtonBackgroundCheckedPointerOver"] = toggleCheckedHoverBrush,
+            ["ToggleButtonBackgroundCheckedPressed"] = toggleCheckedPressedBrush,
+            ["TextControlSelectionHighlightColor"] = selectionHighlightBrush,
         };
         Application.Current.Resources.MergedDictionaries.Add(_resources);
 
@@ -312,7 +454,10 @@ public static class NakatashiTheme
             {
                 Setters =
                 {
-                    new Setter(MenuItem.ForegroundProperty, foregroundBrush)
+                    new Setter(MenuItem.ForegroundProperty, foregroundBrush),
+                    // PART_LayoutRoot template-binds CornerRadius - rounds the accent-tint
+                    // highlight into a soft chip per the reference.
+                    new Setter(MenuItem.CornerRadiusProperty, new CornerRadius(6)),
                 }
             },
 
@@ -363,6 +508,17 @@ public static class NakatashiTheme
                     new Setter(ButtonSpinner.BorderBrushProperty, borderStrongBrush),
                 }
             },
+
+            // If a platform ever rejects window transparency, popups degrade to the opaque
+            // Elevated look instead of Fluent's white PART_TransparencyFallback behind the
+            // translucent fill (which would wash menus out).
+            new Style(x => x.OfType<PopupRoot>())
+            {
+                Setters =
+                {
+                    new Setter(TopLevel.TransparencyBackgroundFallbackProperty, elevatedOpaqueBrush),
+                }
+            },
         };
 
         // Typography only while the app font setting is unset ("Default") - an explicit user
@@ -411,6 +567,8 @@ public static class NakatashiTheme
 
     internal static void Remove()
     {
+        FocusedButtonBrush = null;
+
         if (Application.Current == null)
         {
             return;

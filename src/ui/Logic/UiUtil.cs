@@ -295,6 +295,14 @@ public static class UiUtil
     // immutable brush and only rebuild it when the setting changes.
     private static IBrush GetFocusedButtonBackgroundBrush()
     {
+        // Fork (Nakatashi): while a Nakatashi theme is active, focused dialog buttons use the
+        // theme's accent-gradient wash instead of the user's translucent-blue fill (this per-
+        // button style outranks app-level theme styles, so the swap must happen here).
+        if (Theming.Nakatashi.NakatashiTheme.FocusedButtonBrush is { } nakatashiFocusBrush)
+        {
+            return nakatashiFocusBrush;
+        }
+
         var hex = Se.Settings.Appearance.FocusedButtonBackgroundColor;
         if (_focusedButtonBackgroundBrush == null || _focusedButtonBackgroundHex != hex)
         {
