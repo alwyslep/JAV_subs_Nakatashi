@@ -1,8 +1,9 @@
 # JAV_subs_Nakatashi
 
 Fork of [SubtitleEdit/subtitleedit](https://github.com/SubtitleEdit/subtitleedit) (MIT),
-forked at upstream `bd95cc037` (v5.1.0-rc16). Only the **repository** was renamed — the
-solution, assemblies, and namespaces are deliberately unchanged (see *Fork policy*).
+currently rebased onto upstream `e5cc40b3e` (**v5.1.0-rc17**). Only the **repository** was
+renamed — the solution, assemblies, and namespaces are deliberately unchanged (see
+*Fork policy*).
 
 - `origin`   → `https://github.com/alwyslep/JAV_subs_Nakatashi.git`
 - `upstream` → `https://github.com/SubtitleEdit/subtitleedit.git`
@@ -31,7 +32,7 @@ SDK-resolution error instead of a confusing pile of compile errors.
 | `src/libuilogic` | `LibUiLogic` | UI-agnostic logic |
 | `src/ui` | `UI` | Avalonia desktop app → `SubtitleEdit.exe` |
 | `src/seconv` | `SeConv` | `seconv` CLI converter |
-| `tests/{libse,libuilogic,seconv,UI}` | xUnit | 1,916 tests |
+| `tests/{libse,libuilogic,seconv,UI}` | xUnit | 1,938 tests |
 
 `tests/benchmarks/UiBenchmarks.csproj` exists but is **not** in `SubtitleEdit.sln`, so
 solution-wide build/test commands skip it. Build it explicitly if you need it.
@@ -63,10 +64,11 @@ Publish output lands in `publish/<runtime>/` (gitignored). `publish` stamps the 
 parsed out of `src/ui/Logic/Config/Se.cs` — that file is the single source of truth for
 the app version, and both CI and `build.ps1` read it with the same regex.
 
-**Baseline (verified 2026-07-27):** clean `Release` build in ~74s with **0 warnings,
-0 errors**; `1915 passed / 1 failed` (see below); `publish win-x64 --self-contained`
-produces a 138 MB single-file `SubtitleEdit.exe` (263 MB with libmpv and the native
-Skia/HarfBuzz DLLs alongside).
+**Baseline (verified 2026-07-27, on `e5cc40b3e` / rc17):** clean `Release` build with
+**0 warnings, 0 errors** (~74s cold, ~4s incremental); `1937 passed / 1 failed` (see
+below); `publish win-x64 --self-contained` produces a 138 MB single-file
+`SubtitleEdit.exe` (263 MB with libmpv and the native Skia/HarfBuzz DLLs alongside).
+Fork CI reproduced the same counts on `windows-latest`, and `ubuntu-latest` built clean.
 
 ### Gotcha: publish dirties `packages.lock.json`
 
@@ -92,11 +94,13 @@ at the fork point:
 
 > decoded bitmap has no pixel in the .idx palette's pattern colour — the CLUT was not applied
 
-This is **pre-existing upstream**, not caused by the fork — the tree is unmodified at
-`bd95cc037`, and it also fails under `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`, so it is
-not a locale artifact. It went unnoticed because upstream's release workflows have their
-test step commented out (`.github/workflows/build-ui.yml:320`). The test arrived in
-`90646b256` and the code under test was last touched by `3edc21e9e`.
+This is **pre-existing upstream**, not caused by the fork — it reproduces on an unmodified
+tree, survived the rc16 → rc17 bump unchanged, and also fails under
+`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`, so it is not a locale artifact. It went
+unnoticed because upstream's release workflows have their test step commented out
+(`.github/workflows/build-ui.yml:320`), so nothing upstream ever runs it. The test arrived
+in `90646b256`; the code under test was last touched by `3edc21e9e`. Not yet reported
+upstream.
 
 `.github/workflows/fork-ci.yml` excludes exactly this one test so CI stays meaningful.
 Remove that filter once it is fixed.

@@ -24,9 +24,10 @@ concurrency:
 env:
   DOTNET_NOLOGO: 'true'
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
-  # Known-red on upstream main as of bd95cc037 — the decoded VobSub bitmap contains
-  # no pixel in the .idx CLUT colour. Not caused by this fork; upstream CI never runs
-  # tests, so it landed unnoticed. Excluded so a genuine regression still turns CI red.
+  # Known-red on upstream main (still failing as of e5cc40b3e / v5.1.0-rc17) — the
+  # decoded VobSub bitmap contains no pixel in the .idx CLUT colour. Not caused by this
+  # fork; upstream CI never runs tests, so it landed unnoticed. Excluded so a genuine
+  # regression still turns CI red.
   # Re-run it locally with:
   #   dotnet test tests/seconv/SeConvTests.csproj --filter FullyQualifiedName~VobSubPaletteTest
   # Delete this filter once the test is fixed upstream or here.
