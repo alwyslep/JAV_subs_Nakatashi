@@ -2811,7 +2811,9 @@ public static class UiUtil
 
     internal static Color GetDarkThemeBackgroundColor()
     {
-        return Se.Settings.Appearance.DarkModeBackgroundColor.FromHexToColor();
+        // Fork (Nakatashi): delegate to the theme-aware getter so Nakatashi palettes apply
+        // (covers the Fluent region color in Program.cs and the batch-convert busy card).
+        return UiTheme.GetDarkThemeBackgroundColor();
     }
 
     internal static void ReplaceControl(Control old, Control replacement)

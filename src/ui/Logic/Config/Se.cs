@@ -576,7 +576,9 @@ public class Se
     private static void UpdateLibSeSettings()
     {
         Configuration.Settings.General.FFmpegLocation = Settings.General.FfmpegPath;
-        Configuration.Settings.General.UseDarkTheme = Settings.Appearance.Theme == "Dark";
+        // Fork (Nakatashi): the Nakatashi variants are dark too (libse's exported dark flag).
+        Configuration.Settings.General.UseDarkTheme = Settings.Appearance.Theme == "Dark"
+            || Theming.Nakatashi.NakatashiTheme.IsNakatashiThemeName(Settings.Appearance.Theme);
         Configuration.Settings.General.UseTimeFormatHHMMSSFF = Settings.General.UseFrameMode;
 
         Configuration.Settings.Proxy.ProxyAddress = Settings.General.ProxyAddress ?? string.Empty;

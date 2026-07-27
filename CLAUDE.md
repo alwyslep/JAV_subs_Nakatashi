@@ -30,18 +30,31 @@ described below, not by promise.
 
 **Done:** Phase 0 — the menu inventory safety net (143 commands baselined, 4 tests green).
 
-**Next:** Phase 1 — palette, surface layering, `white/5` borders, corner radii, as a new theme under
-`src/ui/Logic/Theming/Nakatashi/`. Keep the diff to upstream files at the planned three touch
-points (`UiTheme.cs` constant + dispatch branch, `Program.cs` style include, the settings theme
-dropdown); everything else goes in new files so rebases stay trivial.
+**Done:** Phase 1 (2026-07-27) — two Deep Gray variants, **"Nakatashi Charcoal"** and
+**"Nakatashi Blue"**, selectable in the settings theme dropdown. All theme logic lives in
+`src/ui/Logic/Theming/Nakatashi/` (`NakatashiPalette.cs` fixed color tables,
+`NakatashiTheme.cs` applier modeled on `ApplyLighterDark()` incl. its ComboBox guards, plus
+Fluent resource overrides: `ControlCornerRadius` 8 / `OverlayCornerRadius` 12, layered
+surfaces Base→Surface→Elevated→Header, `white/5`–`white/10` borders). The planned "three
+touch points" became five upstream files, each a minimal commented diff — recon found two
+sites that bypass the central predicate and had to be touched: `UiTheme.cs` (dispatch branch,
+widened `IsDarkThemeEnabled()`, theme-aware `GetDarkTheme*Color()` getters), `UiUtil.cs`
+(2-line delegation — this makes `Program.cs`'s RegionColor theme-aware with **zero** diff to
+`Program.cs`), `PluginThemeColorsFactory.cs` (plugins would render light), `Se.cs` (libse's
+exported dark flag), `SettingsViewModel.cs` (dropdown + name maps). The Nakatashi palettes are
+deliberately **decoupled** from the Dark theme's user-configurable `DarkMode*` settings.
 
-**Open question to resolve in Phase 1:** the reference doc's *backdrop blur* has no Avalonia
-primitive for in-app elements — only window-level transparency (`TransparencyLevelHint`), which
-this codebase does not use anywhere yet. Spike it early; if it will not work, fall back to a
-translucent overlay plus a subtle gradient rather than faking it badly.
+**Resolved (Phase 1 spike):** backdrop blur is **not possible in-app** on Avalonia 12.1 —
+`TransparencyLevelHint`/`ExperimentalAcrylicBorder` only blur the desktop behind the window,
+and `Visual.Effect` blurs an element's own subtree. Later phases use translucent Elevated
+surfaces; for modals over frozen content a `RenderTargetBitmap` snapshot + `BlurEffect` is a
+viable equivalent. Do not re-spike.
 
-Roadmap: 1 palette/surfaces → 2 typography (Inter is already a package reference; Pretendard for
-Korean would need bundling, ~2-3 MB) → 3 accent gradient + blur spike → 4 menu re-grouping.
+**Next:** Phase 2 — typography (Inter is already a package reference; Pretendard for Korean
+would need bundling, ~2-3 MB).
+
+Roadmap: ~~1 palette/surfaces~~ → 2 typography → 3 accent gradient + translucent overlays →
+4 menu re-grouping.
 
 `.claude/settings.json` holds a permission allowlist for the usual dotnet/git commands. Upstream's
 `.gitignore` excludes `.claude/`, so it is **local-only and not in the repo** — recreate it by hand
