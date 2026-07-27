@@ -50,10 +50,37 @@ and `Visual.Effect` blurs an element's own subtree. Later phases use translucent
 surfaces; for modals over frozen content a `RenderTargetBitmap` snapshot + `BlurEffect` is a
 viable equivalent. Do not re-spike.
 
-**Next:** Phase 2 — typography (Inter is already a package reference; Pretendard for Korean
-would need bundling, ~2-3 MB).
+**Done:** Phase 2 (2026-07-27) — typography. While a Nakatashi theme is active AND the app
+font setting is unset, six app-level styles (mirroring `UiUtil.SetFontName`'s coverage) apply
+`NakatashiTheme.UiFontChain`: **Inter** (from the `Avalonia.Fonts.Inter` package — resolves via
+`avares://` without `WithInterFont()`, probe-verified) → **Pretendard** (embedded, weights
+400/500/600/700) → **Pretendard JP** (embedded, 400/700 — base Pretendard has kana but NO CJK
+ideographs; without the JP sibling every Japanese subtitle line mixed Pretendard kana with
+OS-fallback kanji) → **$Default** (keeps the OS chain for symbols/other scripts). Assets in
+`src/ui/Assets/Fonts/` (~13.7 MB with the OFL license embedded alongside — SIL's own FAQ says
+embedded-in-binary needs no separate file, so this exceeds compliance).
 
-Roadmap: ~~1 palette/surfaces~~ → 2 typography → 3 accent gradient + translucent overlays →
+Hard-won facts (adversarial review, all probe-verified — do not re-derive):
+- **The unset app font is persisted as `"$Default"`** (`FontFamily.DefaultFontFamilyName`), not
+  `"Default"`: upstream `SettingsViewModel.SaveSettings` writes `new Label().FontFamily.Name`.
+  Any gate comparing only `== "Default"` is dead on the very settings-save that activates the
+  theme. Use `NakatashiTheme.IsDefaultFontSentinel`.
+- Subtitle grid/edit box set a **local** `FontFamily` from `SubtitleTextBoxAndGridFontName`
+  (local beats styles). The three InitListViewAndEditBox pins skip only under
+  `NakatashiTheme.OwnsSubtitleFont` (theme active + both font settings unset) — an explicit
+  app font must NOT leak into subtitle surfaces on stock themes (upstream parity).
+- Ordering guarantee: `SetFontName` runs BEFORE `SetCurrentTheme` at startup
+  (`Program.ConfigureApplication`) and on settings save (`MainViewModel.ApplySettings`), so the
+  theme's later-added font styles always win.
+- **Accepted scope (decision, not oversight):** ~20 tool-window sites (SpellCheck, FixCommonErrors,
+  OCR family, ConvertActors, ChangeFormatting…) still pin local `"Default"` and render the OS
+  font under Nakatashi, as does AvaloniaEdit `TextEditor` (Source view / media info). Byte-identical
+  to upstream; extend coverage only as a deliberate later step. Pretendard JP ships 400/700 only,
+  so SemiBold kanji closest-matches to 700 (Korean UI headers rarely contain kanji).
+- macOS never activates the chain (FontName defaults to "Helvetica Neue" — an explicit choice
+  that also works around the caret bug).
+
+Roadmap: ~~1 palette/surfaces~~ → ~~2 typography~~ → 3 accent gradient + translucent overlays →
 4 menu re-grouping.
 
 `.claude/settings.json` holds a permission allowlist for the usual dotnet/git commands. Upstream's

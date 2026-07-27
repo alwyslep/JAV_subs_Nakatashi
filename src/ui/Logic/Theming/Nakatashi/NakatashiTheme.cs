@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using AvaloniaEdit;
 using AvaloniaEdit.Editing;
+using Nikse.SubtitleEdit.Logic.Config;
 
 namespace Nikse.SubtitleEdit.Logic.Theming.Nakatashi;
 
@@ -32,11 +33,54 @@ namespace Nikse.SubtitleEdit.Logic.Theming.Nakatashi;
 /// </summary>
 public static class NakatashiTheme
 {
-    private static IStyle? _styles;
+    private static Styles? _styles;
     private static ResourceDictionary? _resources;
 
     public const string ThemeNameCharcoal = "Nakatashi Charcoal";
     public const string ThemeNameBlue = "Nakatashi Blue";
+
+    /// <summary>
+    /// Phase 2 typography chain: Latin → Inter (from the Avalonia.Fonts.Inter package the app
+    /// already ships; upstream only registers it as the default on Linux because Inter alone
+    /// would break CJK on Windows), Hangul/kana → embedded Pretendard, CJK ideographs →
+    /// embedded Pretendard JP (base Pretendard has kana but NO kanji - without the JP sibling,
+    /// Japanese subtitle lines would mix Pretendard kana with an OS-fallback face for kanji),
+    /// and $Default last so symbols and scripts none of these cover keep the OS fallback chain.
+    /// Kana can still split between the KR/JP siblings across runs; they are the same design,
+    /// so the seam is invisible in practice.
+    /// </summary>
+    public const string UiFontChain =
+        "avares://Avalonia.Fonts.Inter/Assets#Inter, avares://SubtitleEdit/Assets/Fonts#Pretendard, avares://SubtitleEdit/Assets/Fonts#Pretendard JP, $Default";
+
+    /// <summary>
+    /// True when the app font setting means "no explicit user choice". Three spellings exist:
+    /// empty, the dropdown literal "Default", and "$Default" (FontFamily.DefaultFontFamilyName) -
+    /// upstream's SettingsViewModel persists <c>new Label().FontFamily.Name</c> == "$Default"
+    /// whenever the dropdown shows Default, so a naive == "Default" check would fail on every
+    /// settings file that has ever been saved. (macOS defaults to "Helvetica Neue", an explicit
+    /// choice - the chain intentionally never activates there.)
+    /// </summary>
+    public static bool IsDefaultFontSentinel(string? fontName)
+    {
+        return string.IsNullOrEmpty(fontName)
+               || fontName == "Default"
+               || fontName == FontFamily.DefaultFontFamilyName;
+    }
+
+    /// <summary>
+    /// True when the Nakatashi typography chain should reach the subtitle grid/edit box - i.e.
+    /// the sites that upstream pins with a local FontFamily("Default") may skip that pin.
+    /// All three conditions must hold: the subtitle font setting is unset, a Nakatashi theme is
+    /// active, and the app font is unset (an explicit app font must NOT leak into the subtitle
+    /// surfaces - upstream's local pin shielded them from SetFontName's app-wide styles, and
+    /// that shielding must survive on stock themes and explicit-font setups).
+    /// </summary>
+    public static bool OwnsSubtitleFont(string? subtitleFontName)
+    {
+        return IsDefaultFontSentinel(subtitleFontName)
+               && IsNakatashiThemeName(Se.Settings.Appearance.Theme)
+               && IsDefaultFontSentinel(Se.Settings.Appearance.FontName);
+    }
 
     public static bool IsNakatashiThemeName(string? themeName)
     {
@@ -321,7 +365,48 @@ public static class NakatashiTheme
             },
         };
 
+        // Typography only while the app font setting is unset ("Default") - an explicit user
+        // font choice wins. Ordering makes this safe: both startup (Program.ConfigureApplication)
+        // and settings-save (MainViewModel.ApplySettings) run UiUtil.SetFontName BEFORE
+        // UiTheme.SetCurrentTheme, so these later-added styles override SetFontName's on the
+        // same control types, and Remove() drops them on theme switch.
+        if (IsDefaultFontSentinel(Se.Settings.Appearance.FontName))
+        {
+            AddFontStyles(_styles);
+        }
+
         Application.Current.Styles.Add(_styles);
+    }
+
+    /// <summary>Same control coverage as <c>UiUtil.SetFontName</c>.</summary>
+    private static void AddFontStyles(Styles styles)
+    {
+        var font = new FontFamily(UiFontChain);
+
+        styles.Add(new Style(x => x.OfType<TextBlock>())
+        {
+            Setters = { new Setter(TextBlock.FontFamilyProperty, font) }
+        });
+        styles.Add(new Style(x => x.OfType<TextBox>())
+        {
+            Setters = { new Setter(TextBox.FontFamilyProperty, font) }
+        });
+        styles.Add(new Style(x => x.OfType<Button>())
+        {
+            Setters = { new Setter(Button.FontFamilyProperty, font) }
+        });
+        styles.Add(new Style(x => x.OfType<MenuItem>())
+        {
+            Setters = { new Setter(MenuItem.FontFamilyProperty, font) }
+        });
+        styles.Add(new Style(x => x.OfType<Label>())
+        {
+            Setters = { new Setter(Label.FontFamilyProperty, font) }
+        });
+        styles.Add(new Style(x => x.OfType<ComboBox>())
+        {
+            Setters = { new Setter(ComboBox.FontFamilyProperty, font) }
+        });
     }
 
     internal static void Remove()
