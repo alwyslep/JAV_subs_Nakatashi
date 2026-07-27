@@ -15,6 +15,7 @@ using Nikse.SubtitleEdit.Features.Options.Settings;
 using Nikse.SubtitleEdit.Features.Shared.TextBoxUtils;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.Theming.Nakatashi;
 using Nikse.SubtitleEdit.Logic.ValueConverters;
 using Optris.Icons.Avalonia;
 using MenuItem = Avalonia.Controls.MenuItem;
@@ -302,7 +303,12 @@ public static partial class InitListViewAndEditBox
                 };
                 SubtitleGridTextDisplayModeDisplay.ApplyTo(textBlock, gridTextDisplayMode);
 
-                if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
+                // Fork (Nakatashi): skip the local pin only while the Nakatashi typography chain
+                // owns this surface (theme active + both font settings unset) - a local value
+                // always beats styles, and on stock themes or explicit-font setups the pin must
+                // stay exactly as upstream ships it.
+                if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
+                    && !NakatashiTheme.OwnsSubtitleFont(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
                 {
                     textBlock.FontFamily = new FontFamily(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName);
                 }
@@ -337,7 +343,12 @@ public static partial class InitListViewAndEditBox
                 };
                 SubtitleGridTextDisplayModeDisplay.ApplyTo(textBlock, gridTextDisplayMode);
 
-                if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
+                // Fork (Nakatashi): skip the local pin only while the Nakatashi typography chain
+                // owns this surface (theme active + both font settings unset) - a local value
+                // always beats styles, and on stock themes or explicit-font setups the pin must
+                // stay exactly as upstream ships it.
+                if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
+                    && !NakatashiTheme.OwnsSubtitleFont(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
                 {
                     textBlock.FontFamily = new FontFamily(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName);
                 }
@@ -1792,7 +1803,9 @@ public static partial class InitListViewAndEditBox
             textBox.TextAlignment = TextAlignment.Center;
         }
 
-        if (!string.IsNullOrEmpty(appearance.SubtitleTextBoxAndGridFontName))
+        // Fork (Nakatashi): same gated skip as the grid columns above.
+        if (!string.IsNullOrEmpty(appearance.SubtitleTextBoxAndGridFontName)
+            && !NakatashiTheme.OwnsSubtitleFont(appearance.SubtitleTextBoxAndGridFontName))
         {
             textBox.FontFamily = new FontFamily(appearance.SubtitleTextBoxAndGridFontName);
         }

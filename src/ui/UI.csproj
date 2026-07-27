@@ -70,6 +70,11 @@
 		<AvaloniaResource Include="Assets\*.json" />
 		<AvaloniaResource Include="Assets\*.png" />
 		<AvaloniaResource Include="Assets\*.zip" />
+		<!-- Fork (Nakatashi): embedded Pretendard for the Deep Gray themes' Korean/CJK fallback;
+		     Latin comes from the Avalonia.Fonts.Inter package. The SIL OFL license text is
+		     embedded alongside so distributed binaries carry it. -->
+		<AvaloniaResource Include="Assets\Fonts\*.otf" />
+		<AvaloniaResource Include="Assets\Fonts\*.txt" />
 		<AvaloniaResource Include="Assets\FileTypes\*.ico" />
 		<AvaloniaResource Include="Assets\Languages\*.json" />
 		<AvaloniaResource Include="Assets\Layout\*.png" />
