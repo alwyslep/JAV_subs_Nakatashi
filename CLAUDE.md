@@ -99,8 +99,11 @@ tree, survived the rc16 → rc17 bump unchanged, and also fails under
 `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`, so it is not a locale artifact. It went
 unnoticed because upstream's release workflows have their test step commented out
 (`.github/workflows/build-ui.yml:320`), so nothing upstream ever runs it. The test arrived
-in `90646b256`; the code under test was last touched by `3edc21e9e`. Not yet reported
-upstream.
+in `90646b256`; the code under test was last touched by `3edc21e9e`.
+
+**Do not report this (or anything else) upstream.** Filing issues or PRs against
+`SubtitleEdit/subtitleedit` is out of scope for this fork by the owner's decision. Fix it
+here or leave it excluded.
 
 `.github/workflows/fork-ci.yml` excludes exactly this one test so CI stays meaningful.
 Remove that filter once it is fixed.
