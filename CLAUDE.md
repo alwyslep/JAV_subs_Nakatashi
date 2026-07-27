@@ -211,6 +211,17 @@ commands that moved to Synchronization, Options > Word lists). Accepted for now.
   safe on every theme. The duration column is additionally **right**-aligned — it is the one time
   column whose text length varies. `MeasureShowHideColumnWidth()`'s "widest digit" hack is now
   redundant for the start/end columns but stays correct (and still applies to non-`tnum` fonts).
+- **12px left inset on the Text and Original columns** (`TextColumnLeftInset`), added after seeing
+  the right-aligned duration next to the left-aligned text: the duration cell's warning background
+  fills its cell, so that coloured slab stopped 12px short of the first character and number and
+  sentence read as one run. Now 24px. Done as padding, not the spacer column that the
+  `ScrollbarGutter` precedent invites — a spacer adds a second separator to the header row and
+  needs its own exclusion in both `AutoFitColumns` and the column-width persistence. The header
+  label follows the inset through **`HeaderTemplate`**, deliberately not a `TextBlock` header:
+  `AutoFitColumns` finds the two stretchy columns by `column.Header.ToString()`, so a control there
+  would silently stop them star-sizing. (`DataGridColumn` has `CellTheme` and `HeaderTemplate` but
+  no `HeaderTheme`, so per-column header padding has to go through the template.) Original gets the
+  same inset because in translation mode the two sit side by side.
 - **Auto-select while playing defaults ON**, with `SubtitleGridCenterSelectedRow`. The feature was
   already fully built (`SelectCurrentSubtitleAtPlayhead` → `SelectAndScrollToRow`, waveform-toolbar
   toggle, menu entry) — upstream just ships it off, so the waveform tracked playback while the grid

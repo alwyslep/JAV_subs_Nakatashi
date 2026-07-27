@@ -34,6 +34,32 @@ public static partial class InitListViewAndEditBox
     /// </summary>
     private static readonly FontFeatureCollection TabularFigures = FontFeatureCollection.Parse("tnum");
 
+    /// <summary>
+    /// Fork: extra left inset (px) on the Text/Original columns, on top of their normal 4px cell
+    /// padding. The duration column is right-aligned and its warning background fills the cell, so
+    /// that coloured slab used to stop 12px short of the first character of the subtitle - close
+    /// enough that the number and the sentence read as one run. This pushes the gap to 24px.
+    /// Applied as padding rather than a spacer column (the <see cref="SubtitleGridColumnKeys
+    /// .ScrollbarGutter"/> pattern) so the header row keeps its current separators and neither
+    /// AutoFitColumns nor the column-width persistence needs a new exclusion.
+    /// </summary>
+    private const double TextColumnLeftInset = 12;
+
+    /// <summary>
+    /// Renders a text column's header with <see cref="TextColumnLeftInset"/> of left margin, so the
+    /// header label stays flush with the indented cell text below it. Deliberately a
+    /// <c>HeaderTemplate</c> and not a <c>TextBlock</c> header: MainViewModel.AutoFitColumns
+    /// identifies the two stretchy columns by <c>column.Header.ToString()</c>, which would stop
+    /// matching - and silently stop star-sizing them - the moment Header became a control.
+    /// </summary>
+    private static readonly FuncDataTemplate<string> IndentedTextColumnHeader =
+        new((value, _) => new TextBlock
+        {
+            Text = value,
+            Margin = new Thickness(TextColumnLeftInset, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
     public static Grid MakeLayoutListViewAndEditBox(MainView mainPage, MainViewModel vm)
     {
         mainPage.DataContext = vm;
@@ -300,6 +326,7 @@ public static partial class InitListViewAndEditBox
         vm.SubtitleGrid.Columns.Add(new DataGridTemplateColumn
         {
             Header = Se.Language.General.Text,
+            HeaderTemplate = IndentedTextColumnHeader,
             Tag = SubtitleGridColumnKeys.Text,
             Width = new DataGridLength(1, DataGridLengthUnitType.Star),
             MinWidth = 100,
@@ -308,7 +335,9 @@ public static partial class InitListViewAndEditBox
             {
                 var border = new Border
                 {
-                    Padding = new Thickness(4, 2),
+                    // Fork: extra left inset only - see TextColumnLeftInset. Padding, not margin, so
+                    // the row-highlight background still fills the whole cell.
+                    Padding = new Thickness(4 + TextColumnLeftInset, 2, 4, 2),
                     [!Border.BackgroundProperty] = new Binding(nameof(SubtitleLineViewModel.TextBackgroundBrush))
                 };
 
@@ -341,6 +370,7 @@ public static partial class InitListViewAndEditBox
         var originalColumn = new DataGridTemplateColumn
         {
             Header = Se.Language.General.OriginalText,
+            HeaderTemplate = IndentedTextColumnHeader,
             Tag = SubtitleGridColumnKeys.OriginalText,
             Width = new DataGridLength(1, DataGridLengthUnitType.Star), // Stretch text column
             MinWidth = 100,
@@ -349,7 +379,9 @@ public static partial class InitListViewAndEditBox
             {
                 var border = new Border
                 {
-                    Padding = new Thickness(4, 2),
+                    // Fork: matches the Text column - in translation mode the two sit side by side,
+                    // so a one-sided inset would read as a misalignment. See TextColumnLeftInset.
+                    Padding = new Thickness(4 + TextColumnLeftInset, 2, 4, 2),
                 };
 
                 var textBlock = new TextBlock
