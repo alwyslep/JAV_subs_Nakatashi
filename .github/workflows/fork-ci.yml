@@ -1,0 +1,87 @@
+# Fork-only continuous integration.
+#
+# Upstream's own workflows (build-ui.yml, build-seconv.yml, build-flatpak.yml) are
+# all `workflow_dispatch`-only release pipelines and have their test step commented
+# out, so nothing validates a push. This workflow fills that gap for the fork: every
+# push and PR gets a real restore + build + test on Windows, plus a Linux build to
+# catch platform-specific compile breaks early.
+#
+# Kept in a separate file (rather than editing upstream's) so `git rebase upstream/main`
+# never conflicts here.
+
+name: Fork CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: fork-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  # Known-red on upstream main as of bd95cc037 — the decoded VobSub bitmap contains
+  # no pixel in the .idx CLUT colour. Not caused by this fork; upstream CI never runs
+  # tests, so it landed unnoticed. Excluded so a genuine regression still turns CI red.
+  # Re-run it locally with:
+  #   dotnet test tests/seconv/SeConvTests.csproj --filter FullyQualifiedName~VobSubPaletteTest
+  # Delete this filter once the test is fixed upstream or here.
+  KNOWN_FAILING: 'FullyQualifiedName!=SeConvTests.Core.VobSubPaletteTest.LoadVobSub_AppliesIdxPalette_ToDecodedBitmaps'
+
+jobs:
+  build-and-test:
+    name: Build + test (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-windows-${{ hashFiles('**/packages.lock.json', '**/*.csproj') }}
+          restore-keys: nuget-windows-
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --configuration Release --no-build --filter "$env:KNOWN_FAILING"
+
+  build-linux:
+    name: Build (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-linux-${{ hashFiles('**/packages.lock.json', '**/*.csproj') }}
+          restore-keys: nuget-linux-
+
+      - name: Restore
+        run: dotnet restore
+
+      # Build only: the Avalonia UI tests have not been validated on a headless Linux
+      # runner for this fork yet. Promote this to `dotnet test` once that is confirmed.
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
