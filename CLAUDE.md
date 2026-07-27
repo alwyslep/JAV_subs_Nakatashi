@@ -8,6 +8,45 @@ renamed — the solution, assemblies, and namespaces are deliberately unchanged 
 - `origin`   → `https://github.com/alwyslep/JAV_subs_Nakatashi.git`
 - `upstream` → `https://github.com/SubtitleEdit/subtitleedit.git`
 
+## Where we are (2026-07-27)
+
+Goal: re-skin the UI in a modern "Deep Gray" dark design system (the reference doc is
+`C:\Users\geech\Documents\배경색 및 다크 모드 (The Deep Gray Palette).md` — Gemini / Claude-desktop
+style: dense minimalism, layered surfaces, near-invisible borders, generous radii). Frame first
+(*와꾸*), performance and features after.
+
+**Hard constraint:** every feature that exists upstream must survive. Menu position and grouping
+may change freely; the atomic commands may not disappear. This is enforced by the inventory tests
+described below, not by promise.
+
+**Decisions already made — do not re-litigate:**
+
+| Question | Decision |
+|---|---|
+| Palette | Ship **both** variants — Claude charcoal (`#191919`/`#222222`) and Gemini cool blue (`#131314`/`#1e1f20`) — as swappable colour tables |
+| Theme placement | **New theme(s) added alongside** the existing Dark; never overwrite `ApplyLighterDark()` |
+| First pass scope | Safety net + visual phases only; **menu re-grouping deferred** until the new look is on screen |
+| Upstream issues | **Never file any.** See *Fork policy* |
+
+**Done:** Phase 0 — the menu inventory safety net (143 commands baselined, 4 tests green).
+
+**Next:** Phase 1 — palette, surface layering, `white/5` borders, corner radii, as a new theme under
+`src/ui/Logic/Theming/Nakatashi/`. Keep the diff to upstream files at the planned three touch
+points (`UiTheme.cs` constant + dispatch branch, `Program.cs` style include, the settings theme
+dropdown); everything else goes in new files so rebases stay trivial.
+
+**Open question to resolve in Phase 1:** the reference doc's *backdrop blur* has no Avalonia
+primitive for in-app elements — only window-level transparency (`TransparencyLevelHint`), which
+this codebase does not use anywhere yet. Spike it early; if it will not work, fall back to a
+translucent overlay plus a subtle gradient rather than faking it badly.
+
+Roadmap: 1 palette/surfaces → 2 typography (Inter is already a package reference; Pretendard for
+Korean would need bundling, ~2-3 MB) → 3 accent gradient + blur spike → 4 menu re-grouping.
+
+`.claude/settings.json` holds a permission allowlist for the usual dotnet/git commands. Upstream's
+`.gitignore` excludes `.claude/`, so it is **local-only and not in the repo** — recreate it by hand
+on a fresh clone.
+
 ## Toolchain
 
 | Requirement | Needed | Verified on this machine |
