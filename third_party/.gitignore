@@ -1,0 +1,5 @@
+# Local cache for large runtime binaries fetched by tools/build.ps1 (libmpv, ...).
+# Never commit these — libmpv-2.dll alone is ~118 MB.
+# Self-contained so the fork does not have to touch upstream's root .gitignore.
+*
+!.gitignore
