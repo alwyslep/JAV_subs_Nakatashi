@@ -170,7 +170,15 @@ public class SeGeneral
         SubtitleEnterKeyAction = nameof(SubtitleEnterKeyActionType.GoToSubtitleAndSetVideoPosition);
         SubtitleSingleClickAction = nameof(SubtitleSingleClickActionType.None);
         SubtitleDoubleClickAction = nameof(SubtitleDoubleClickActionType.GoToSubtitleAndPause);
-        SubtitleGridCenterSelectedRow = false;
+        // Fork: both default on. Upstream ships auto-select off, which leaves the waveform tracking
+        // playback while the subtitle grid sits frozen on whatever row was last clicked - the grid
+        // and the waveform disagree about "where we are", and the grid is the surface being edited.
+        // Centering is what makes it usable rather than jarring: without it the selection walks to
+        // the bottom edge and the grid jumps a page at a time. Both stay user-toggleable (the
+        // waveform toolbar's auto-select button / Options), and an existing settings file keeps
+        // whatever it already stores - this only changes the out-of-the-box state.
+        SelectCurrentSubtitleWhilePlaying = true;
+        SubtitleGridCenterSelectedRow = true;
         SaveAsBehavior = nameof(SaveAsBehaviourType.UseVideoFileNameThenSubtitleFileName);
         SaveAsAppendLanguageCode = nameof(SaveAsLanguageAppendType.None);
         AutoConvertToUtf8 = false;

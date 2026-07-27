@@ -24,6 +24,15 @@ namespace Nikse.SubtitleEdit.Features.Main.Layout;
 
 public static partial class InitListViewAndEditBox
 {
+    /// <summary>
+    /// Fork: OpenType "tnum" (tabular figures) for the time/duration cells - forces every digit to
+    /// the same advance width so the ":" and "," separators stack into vertical rules down the
+    /// column. Shared instance: the cell templates below run per realized row, and re-parsing the
+    /// feature string for every row of a multi-thousand-line grid would be pure waste. Nothing
+    /// mutates it. A font without the feature (or a "tnum"-less OS fallback) just ignores it, so
+    /// this is safe on every theme and font setting.
+    /// </summary>
+    private static readonly FontFeatureCollection TabularFigures = FontFeatureCollection.Parse("tnum");
 
     public static Grid MakeLayoutListViewAndEditBox(MainView mainPage, MainViewModel vm)
     {
@@ -201,6 +210,11 @@ public static partial class InitListViewAndEditBox
                 var textBlock = new TextBlock
                 {
                     VerticalAlignment = VerticalAlignment.Center,
+                    // Fork: tabular figures - every digit takes the same advance width, so the ":"
+                    // and "," separators line up as vertical rules down the column instead of
+                    // drifting with the digits above them. Same trick the video player's position
+                    // read-out already uses. Fonts without "tnum" simply ignore it.
+                    FontFeatures = TabularFigures,
                     [!TextBlock.TextProperty] = new Binding(nameof(SubtitleLineViewModel.StartTime)) { Converter = fullTimeConverter, Mode = BindingMode.OneWay },
                 };
                 border.Child = textBlock;
@@ -231,6 +245,7 @@ public static partial class InitListViewAndEditBox
                 var textBlock = new TextBlock
                 {
                     VerticalAlignment = VerticalAlignment.Center,
+                    FontFeatures = TabularFigures, // see the start column above
                     [!TextBlock.TextProperty] = new Binding(nameof(SubtitleLineViewModel.EndTime)) { Converter = fullTimeConverter, Mode = BindingMode.OneWay },
                 };
                 border.Child = textBlock;
@@ -263,6 +278,11 @@ public static partial class InitListViewAndEditBox
                 {
                     VerticalAlignment = VerticalAlignment.Center,
                     TextWrapping = TextWrapping.Wrap,
+                    FontFeatures = TabularFigures, // see the start column above
+                    // Fork: right-aligned, unlike the fixed-width start/end columns. Duration is the
+                    // one time column whose text length varies ("0,900" vs "12,345"), so aligning
+                    // left would stagger the decimal separator; aligning right pins it.
+                    TextAlignment = TextAlignment.Right,
                     [!TextBlock.TextProperty] = new Binding(nameof(SubtitleLineViewModel.Duration)) { Converter = shortTimeConverter, Mode = BindingMode.OneWay },
                 };
 

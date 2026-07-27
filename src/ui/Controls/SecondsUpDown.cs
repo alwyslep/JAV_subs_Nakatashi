@@ -97,6 +97,9 @@ public class SecondsUpDown : TemplatedControl
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 Width = double.NaN,
                 BorderBrush = Brushes.Transparent,
+                // Fork: tabular figures, so the duration spinner matches the grid's duration
+                // column and does not reflow while the value is stepped. See TimeCodeUpDown.
+                FontFeatures = TimeCodeUpDown.TabularFigures,
             };
 
             var grid = new Grid

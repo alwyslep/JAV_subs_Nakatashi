@@ -25,6 +25,11 @@ namespace Nikse.SubtitleEdit.Controls
         // jump a whole hour (#12506). The millisecond step size is configurable in Settings.
         private const int LastPartCaretIndex = 9;
 
+        // Fork: OpenType "tnum" (tabular figures). Shared because CreateTemplate runs once per
+        // control instance and these spinners appear in ~20 windows. Fonts lacking the feature
+        // ignore it.
+        internal static readonly FontFeatureCollection TabularFigures = FontFeatureCollection.Parse("tnum");
+
         public bool UseVideoOffset { get; set; } = false;
 
         private TextBox? _textBox;
@@ -203,6 +208,11 @@ namespace Nikse.SubtitleEdit.Controls
                     Width = double.NaN,
                     BorderBrush = Brushes.Transparent,
                     CaretIndex = LastPartCaretIndex,
+                    // Fork: tabular figures, matching the subtitle grid's time columns. Beyond
+                    // looking tidy this matters for editing: the caret drives a fixed-position
+                    // field (hh:mm:ss:fff), so a proportional "1" made the field under the caret
+                    // shift as digits changed. Equal-width digits keep each field anchored.
+                    FontFeatures = TabularFigures,
                 };
 
                 var grid = new Grid

@@ -192,8 +192,46 @@ Traps for anyone touching this menu again:
 Known drift this created: `docs/` still describes some old menu paths (Tools > for the
 commands that moved to Synchronization, Options > Word lists). Accepted for now.
 
+**Done:** Phase 5 (2026-07-27) — subtitle grid legibility. Three small, independent changes:
+
+- **`Show`/`Hide` → 시작/종료 in Korean.** Upstream's column names are a literal translation of
+  SubRip-era "Show/Hide"; the bindings are `StartTime`/`EndTime`. Renamed at the shared resource
+  (`Korean.json` `general.show`/`hide`, plus `endTime`, `showStartColumn`/`showHideColumn` and
+  SortBy's two labels), so all ~30 windows with a start/end column follow. **Korean only** — English
+  and the other 38 translations still say their own "Show"/"Hide"; extend deliberately, per language.
+  `CompareWindow.cs` is the **one** site out of 54 where `General.Show` means "display" rather than
+  a start time (it labels the All / only-differences filter); it now reads `General.Visible`, whose
+  Korean value is already "표시" — so that label is byte-identical to before in Korean and no new
+  resource key was needed. (In English it changes "Show:" → "Visible:", the one non-Korean-visible
+  effect of this phase.) Anything added later that reuses `General.Show` must mean *start time*.
+- **Tabular figures (`tnum`)** on the grid's start/end/duration cells and on `TimeCodeUpDown` /
+  `SecondsUpDown` (the latter reach ~20 windows). Equal-width digits turn the `:` and `,`
+  separators into vertical rules. Chosen over a monospace family: no extra embedded font, and the
+  Inter/Pretendard chain from Phase 2 stays intact. Fonts without the feature ignore it, so this is
+  safe on every theme. The duration column is additionally **right**-aligned — it is the one time
+  column whose text length varies. `MeasureShowHideColumnWidth()`'s "widest digit" hack is now
+  redundant for the start/end columns but stays correct (and still applies to non-`tnum` fonts).
+- **Auto-select while playing defaults ON**, with `SubtitleGridCenterSelectedRow`. The feature was
+  already fully built (`SelectCurrentSubtitleAtPlayhead` → `SelectAndScrollToRow`, waveform-toolbar
+  toggle, menu entry) — upstream just ships it off, so the waveform tracked playback while the grid
+  sat frozen. Centering is what makes it usable: without it the selection walks to the bottom edge
+  and the grid jumps a page at a time.
+
+**Trap, cost an entire verification cycle:** the language JSONs are **`AvaloniaResource`s**
+(`UI.csproj`: `Assets\Languages\*.json`), not content files. They are unpacked to
+`<DataFolder>\Languages\` by `LanguageInitializer`, which only runs when `Languages\version.txt`
+is **missing or older than `Se.Version`** (`LanguageInitializer.cs:51-76`). Editing a translation
+therefore changes **nothing** at runtime until the version bumps. During development, delete
+`<output>\Languages\version.txt` and restart. Worse, the unpack races the first `LoadLanguage()`:
+the run that rewrites the files still displays the **old** strings, so it takes **two** restarts to
+see a translation edit. Real releases are fine (`Se.Version` bumps), but a settings-folder that
+survives a downgrade will keep newer strings.
+
+Also note `SeGeneral`'s defaults only apply to a **fresh** settings file — an existing
+`Settings.json` keeps whatever it stores, so a default flip is invisible to current users.
+
 Roadmap: ~~1 palette/surfaces~~ → ~~2 typography~~ → ~~3 accent gradient + translucent
-overlays~~ → ~~4 menu re-grouping~~. **The UI/UX rework is complete.**
+overlays~~ → ~~4 menu re-grouping~~ → ~~5 grid legibility~~. **The UI/UX rework is complete.**
 
 `.claude/settings.json` holds a permission allowlist for the usual dotnet/git commands. Upstream's
 `.gitignore` excludes `.claude/`, so it is **local-only and not in the repo** — recreate it by hand

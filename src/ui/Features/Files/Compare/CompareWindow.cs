@@ -90,7 +90,12 @@ public class CompareWindow : Window
         grid.Add(statusText, 2, 0, 1, 2);
 
         // display type combo box
-        var labelDisplayType = UiUtil.MakeLabel(Se.Language.General.Show).WithMarginRight(5);
+        // Fork: this is the ONE place General.Show means "display" rather than a cue's start time
+        // (it labels the All / only-differences filter). The Korean translation of General.Show is
+        // now "시작", so this label reads from General.Visible instead - already translated in every
+        // language file, so no new resource key is needed. Every other General.Show/Hide site in the
+        // app is a start/end time column and is meant to follow the rename.
+        var labelDisplayType = UiUtil.MakeLabel(Se.Language.General.Visible).WithMarginRight(5);
         var comboBoxCompareVisual = UiUtil.MakeComboBox(vm.CompareVisuals, vm, nameof(vm.SelectedCompareVisual));
         comboBoxCompareVisual.SelectionChanged += vm.ComboBoxCompareVisualSelectionChanged;
         var panelDisplayType = new StackPanel
