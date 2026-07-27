@@ -114,6 +114,40 @@ Remove that filter once it is fixed.
 build on Linux for every push and PR. Upstream's workflows are all `workflow_dispatch`
 release pipelines and never fire on their own — leave them alone so rebases stay clean.
 
+## UI/UX rework — the safety net
+
+The fork is re-skinning the UI (Deep Gray palette, layered surfaces, softer radii) and will later
+re-group main-menu entries. The hard constraint is that **no feature from upstream may be lost**,
+so that is enforced by test, not by promise.
+
+`tests/UI/Features/Main/Layout/MainMenuInventoryTests.cs` resolves the real `MainViewModel` from
+the DI container, builds the menu via `InitMenu.Make`, and compares the set of reachable commands
+against `main-menu-inventory.baseline.txt` (**143 commands**).
+
+Entries are keyed by **`MainViewModel` command property name — never by menu path or header text**,
+because paths and wording are exactly what we intend to change, and header text moves with
+upstream's translations. Menu items the VM fills at runtime (recent files, plugins, audio tracks)
+are recognised by reference and exempted, so the check does not depend on the active UI language.
+
+Four tests, each a distinct failure mode:
+
+| Test | Fires when | What it means |
+|---|---|---|
+| `MainMenu_ExposesCommands` | menu is empty/tiny | the harness itself broke — the others would pass vacuously |
+| `MainMenu_EveryLeafIsTraceableToACommand` | a leaf has no VM command | a blind spot: that entry could vanish unnoticed |
+| `MainMenu_RetainsEveryBaselineCommand` | a baseline command is gone | **we lost functionality — fix the menu, never the baseline** |
+| `MainMenu_HasNoCommandsMissingFromBaseline` | a new command appeared | usually upstream added a feature; give it a home, then refresh |
+
+That last one is the upstream tripwire: an upstream menu addition cannot merge silently. Until it
+is placed, the item still shows in its default position, so nothing is lost meanwhile.
+
+```powershell
+./tools/build.ps1 menu-baseline   # regenerate after an intentional change
+```
+
+Review the diff before committing — a **removed** line is a regression, an **added** line is new
+work to place.
+
 ## Upstream sync
 
 ```powershell
