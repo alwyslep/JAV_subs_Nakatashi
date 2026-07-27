@@ -5,7 +5,7 @@
 # A command ADDED means upstream (or we) introduced one - place it in our layout,
 # then regenerate with:  ./tools/build.ps1 menu-baseline
 #
-# 143 commands.
+# 145 commands.
 ClearSecondarySubtitleCommand
 CommandExitCommand
 CommandFileNewCommand
@@ -16,6 +16,7 @@ CommandFileOpenKeepVideoCommand
 CommandFileReopenCommand
 CommandFileSaveAsCommand
 CommandFileSaveCommand
+CommandShowLayoutCommand
 CommandShowSettingsCommand
 CommandShowSettingsLanguageCommand
 CommandShowSettingsShortcutsCommand
@@ -100,6 +101,7 @@ ShowRestoreAutoBackupCommand
 ShowShotChangesListCommand
 ShowShotChangesSubtitlesCommand
 ShowSortByCommand
+ShowSourceViewCommand
 ShowSpeechToTextWhisperCommand
 ShowSpellCheckCommand
 ShowSpellCheckDictionariesCommand

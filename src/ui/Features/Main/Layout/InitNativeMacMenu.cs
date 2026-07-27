@@ -33,6 +33,15 @@ namespace Nikse.SubtitleEdit.Features.Main.Layout;
 ///   UpdateShortcuts: re-resolves gestures after shortcut settings change.
 ///   UpdateRecentFiles / UpdatePluginsMenu / UpdateAudioTracksMenu: refresh
 ///     dynamic submenus on demand.
+///
+/// FORK NOTE (Nakatashi): this is a hand-written parallel structure - nothing here is
+/// derived from InitMenu, and no test covers it. It therefore does NOT reflect the fork's
+/// menu re-grouping (Phase 4): on macOS the menu keeps upstream's arrangement, while the
+/// Avalonia menu in InitMenu.cs groups timing under Synchronization, has no "Video &gt; More"
+/// submenu, and exposes Layout / Source view under Options. That divergence is deliberate -
+/// the fork is Windows-only - and this file had already drifted from InitMenu before it
+/// (ExportImscImageCommand and the whole SSA Tools menu are missing here). If macOS ever
+/// matters, derive this from InitMenu rather than re-syncing it by hand.
 /// </summary>
 public static class InitNativeMacMenu
 {

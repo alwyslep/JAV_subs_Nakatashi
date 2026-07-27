@@ -21,6 +21,27 @@ public static class InitMenu
     // One notch below the Fluent theme default (~14).
     private const double MenuFontSize = 13.0;
 
+    // One stateless instance, shared by every window: it reads the menu and the view model
+    // back off the event rather than capturing them, so Make() can detach-then-attach it
+    // (see there) without a per-window field and without ever stacking subscriptions.
+    private static readonly EventHandler<Avalonia.Interactivity.RoutedEventArgs> OpenedHandler = (s, e) =>
+    {
+        if (s is Menu openedMenu && openedMenu.DataContext is MainViewModel menuVm)
+        {
+            DisplayShortcuts(openedMenu, menuVm);
+        }
+    };
+
+    /// <summary>
+    /// Guards a borrowed Shortcuts-dialog label. Those keys ship as empty strings in some
+    /// translations (Dutch, for one), and an empty value in the JSON overrides the English
+    /// default - so a menu entry using one would render as a blank row.
+    /// </summary>
+    private static string OrFallback(string? label, string fallback)
+    {
+        return string.IsNullOrWhiteSpace(label) ? fallback : label;
+    }
+
     public static void Make(MainViewModel vm)
     {
         var l = Se.Language.Main.Menu;
@@ -36,13 +57,19 @@ public static class InitMenu
         var menu = vm.Menu;
         menu.DataContext = vm;
         menu.Items.Clear();
-        menu.Opened += (s, e) => DisplayShortcuts(menu, vm);
+
+        // vm.Menu is a single long-lived control and Make() re-runs on every language
+        // switch, so the handler and the style below have to be detached first - otherwise
+        // they stack up one copy per run and the gestures get stamped N times per open.
+        menu.Opened -= OpenedHandler;
+        menu.Opened += OpenedHandler;
 
         // Drop the menu's font one notch below the theme default and tighten
         // each item's vertical padding — a denser menu reads better when there
         // are this many entries. The style targets nested MenuItems so submenu
         // items inherit the same look.
         menu.FontSize = MenuFontSize;
+        menu.Styles.Clear();
         menu.Styles.Add(new Style(x => x.OfType<MenuItem>())
         {
             Setters =
@@ -199,6 +226,19 @@ public static class InitMenu
                     Header = l.Export,
                     Items =
                     {
+                        // Text formats first - they are the exports actually performed here.
+                        // The image/broadcast formats below are all kept, just demoted.
+                        new MenuItem
+                        {
+                            Header = Se.Language.File.Export.CustomTextFormatsDotDotDot,
+                            Command = vm.ShowExportCustomTextFormatCommand,
+                        },
+                        new MenuItem
+                        {
+                            Header = Se.Language.File.Export.PlainTextDotDotDot,
+                            Command = vm.ShowExportPlainTextCommand,
+                        },
+                        new Separator(),
                         new MenuItem
                         {
                             Header = Se.Language.General.BluRaySup,
@@ -288,17 +328,6 @@ public static class InitMenu
                         {
                             Header = "WebVTT png",
                             Command = vm.ExportWebVttThumbnailsCommand,
-                        },
-                        new Separator(),
-                        new MenuItem
-                        {
-                            Header = Se.Language.File.Export.CustomTextFormatsDotDotDot,
-                            Command = vm.ShowExportCustomTextFormatCommand,
-                        },
-                        new MenuItem
-                        {
-                            Header = Se.Language.File.Export.PlainTextDotDotDot,
-                            Command = vm.ShowExportPlainTextCommand,
                         },
                     }
                 },
@@ -414,48 +443,14 @@ public static class InitMenu
             Header = l.Tools,
         };
         menu.Items.Add(menuItemTools);
-        var tools = new List<MenuItem>
+        // Grouped by what the command does, not by the accident of its English name.
+        // Upstream sorted this list alphabetically at build time, which split obvious
+        // siblings ("Adjust durations" from "Apply duration limits") and re-shuffled the
+        // whole menu in every other UI language. The six timing commands that used to live
+        // here now sit in Synchronization, and "Make new empty translation" in Translate.
+        foreach (var item in new List<Control>
         {
-            new MenuItem
-            {
-                Header = l.AdjustDurations,
-                Command = vm.ShowToolsAdjustDurationsCommand,
-            },
-            new MenuItem
-            {
-                Header = l.ApplyDurationLimits,
-                Command = vm.ShowApplyDurationLimitsCommand,
-            },
-            new MenuItem
-            {
-                Header = l.BatchConvert,
-                Command = vm.ShowToolsBatchConvertCommand,
-            },
-            new MenuItem
-            {
-                Header = l.BeautifyTimeCodes,
-                Command = vm.ShowBeautifyTimeCodesCommand,
-            },
-            new MenuItem
-            {
-                Header = l.BridgeGaps,
-                Command = vm.ShowBridgeGapsCommand,
-            },
-            new MenuItem
-            {
-                Header = l.ApplyMinGap,
-                Command = vm.ShowApplyMinGapCommand,
-            },
-            new MenuItem
-            {
-                Header = l.ChangeCasing,
-                Command = vm.ShowToolsChangeCasingCommand,
-            },
-            new MenuItem
-            {
-                Header = l.ChangeFormatting,
-                Command = vm.ShowToolsChangeFormattingCommand,
-            },
+            // Find and fix
             new MenuItem
             {
                 Header = l.FixCommonErrors,
@@ -473,9 +468,27 @@ public static class InitMenu
             },
             new MenuItem
             {
-                Header = l.MakeEmptyTranslationFromCurrentSubtitle,
-                Command = vm.ToolsMakeEmptyTranslationFromCurrentSubtitleCommand,
+                Header = l.ChangeCasing,
+                Command = vm.ShowToolsChangeCasingCommand,
             },
+            new MenuItem
+            {
+                Header = l.ChangeFormatting,
+                Command = vm.ShowToolsChangeFormattingCommand,
+            },
+            new MenuItem
+            {
+                Header = l.RemoveTextForHearingImpaired,
+                Command = vm.ShowToolsRemoveTextForHearingImpairedCommand,
+            },
+            new MenuItem
+            {
+                Header = l.ConvertActors,
+                Command = vm.ShowToolsConvertActorsCommand,
+            },
+            new Separator(),
+
+            // Merge lines
             new MenuItem
             {
                 Header = l.MergeLinesWithSameText,
@@ -488,11 +501,6 @@ public static class InitMenu
             },
             new MenuItem
             {
-                Header = l.SplitBreakLongLines,
-                Command = vm.ShowToolsSplitBreakLongLinesCommand,
-            },
-            new MenuItem
-            {
                 Header = l.MergeShortLines,
                 Command = vm.ShowToolsMergeShortLinesCommand,
             },
@@ -501,20 +509,13 @@ public static class InitMenu
                 Header = l.MergeContinuationLines,
                 Command = vm.ShowToolsMergeContinuationLinesCommand,
             },
+            new Separator(),
+
+            // Split lines and re-order
             new MenuItem
             {
-                Header = l.SnapAllTimesToFrames,
-                Command = vm.SnapAllTimesToFramesCommand,
-            },
-            new MenuItem
-            {
-                Header = l.MergeTwoSubtitles,
-                Command = vm.ShowToolsMergeTwoSubtitlesCommand,
-            },
-            new MenuItem
-            {
-                Header = l.SortSubtitles,
-                Command = vm.ShowSortByCommand,
+                Header = l.SplitBreakLongLines,
+                Command = vm.ShowToolsSplitBreakLongLinesCommand,
             },
             new MenuItem
             {
@@ -523,30 +524,36 @@ public static class InitMenu
             },
             new MenuItem
             {
-                Header = l.RemoveTextForHearingImpaired,
-                Command = vm.ShowToolsRemoveTextForHearingImpairedCommand,
+                Header = l.SortSubtitles,
+                Command = vm.ShowSortByCommand,
+            },
+            new Separator(),
+
+            // Whole-file operations
+            new MenuItem
+            {
+                Header = l.MergeTwoSubtitles,
+                Command = vm.ShowToolsMergeTwoSubtitlesCommand,
             },
             new MenuItem
             {
-                Header = l.ConvertActors,
-                Command = vm.ShowToolsConvertActorsCommand,
+                Header = l.JoinSubtitles,
+                Command = vm.ShowToolsJoinCommand,
             },
-        };
-        foreach (var item in tools.OrderBy(p => p.Header?.ToString()?.Replace("_", string.Empty)))
+            new MenuItem
+            {
+                Header = l.SplitSubtitle,
+                Command = vm.ShowToolsSplitCommand,
+            },
+            new MenuItem
+            {
+                Header = l.BatchConvert,
+                Command = vm.ShowToolsBatchConvertCommand,
+            },
+        })
         {
             menuItemTools.Items.Add(item);
         }
-        menuItemTools.Items.Add(new Separator());
-        menuItemTools.Items.Add(new MenuItem
-        {
-            Header = l.JoinSubtitles,
-            Command = vm.ShowToolsJoinCommand,
-        });
-        menuItemTools.Items.Add(new MenuItem
-        {
-            Header = l.SplitSubtitle,
-            Command = vm.ShowToolsSplitCommand,
-        });
 
         vm.MenuPlugins.Header = Se.Language.Plugins.Title;
         vm.MenuPlugins.IsVisible = Se.Settings.Appearance.ShowPluginsMenu;
@@ -584,6 +591,13 @@ public static class InitMenu
                     Header = l.GetDictionaries,
                     Command = vm.ShowSpellCheckDictionariesCommand,
                 },
+                new MenuItem
+                {
+                    // The names/ignore/OCR-fix word lists are what spell check reads;
+                    // upstream filed the editor for them under Options instead.
+                    Header = l.WordLists,
+                    Command = vm.ShowWordListsCommand,
+                },
             }
         });
 
@@ -594,71 +608,11 @@ public static class InitMenu
         menuItemAudioTracks.Bind(MenuItem.IsVisibleProperty, new Binding(nameof(vm.IsAudioTracksVisible)));
         vm.AudioTraksMenuItem = menuItemAudioTracks;
 
-        var videoMore = new List<MenuItem>
-        {
-            new MenuItem
-            {
-                Header = Se.Language.Video.OpenSecondarySubtitleOnVideoPlayerDotDotDot,
-                Command = vm.OpenSecondarySubtitleCommand,
-                [!Visual.IsVisibleProperty] = new Binding(nameof(vm.IsSubtitleSecondaryVisible)) { Converter = new InverseBooleanConverter() },
-            },
-            new MenuItem
-            {
-                Header = Se.Language.Video.RemoveSecondarySubtitleOnVideoPlayer,
-                Command = vm.ClearSecondarySubtitleCommand,
-                [!Visual.IsVisibleProperty] = new Binding(nameof(vm.IsSubtitleSecondaryVisible)),
-            },
-            new MenuItem
-            {
-                Header = Se.Language.Video.ReEncodeVideoForBetterSubtitlingDotDotDot,
-                Command = vm.VideoReEncodeCommand,
-            },
-            new MenuItem
-            {
-                Header = Se.Language.Video.CutVideoDotDotDot,
-                Command = vm.VideoCutCommand,
-            },
-            new MenuItem
-            {
-                Header = Se.Language.Options.Shortcuts.ToggleWaveformToolbar,
-                Command = vm.ToggleIsWaveformToolbarVisibleCommand,
-                Icon = new Optris.Icons.Avalonia.Icon
-                {
-                    Value = IconNames.CheckBold,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    [!Visual.IsVisibleProperty] = new Binding(nameof(vm.IsWaveformToolbarVisible)),
-                }
-            },
-            new MenuItem
-            {
-                Header = Se.Language.Main.Menu.SetVideoOffset,
-                [!MenuItem.HeaderProperty] = new Binding(nameof(vm.SetVideoOffsetText)),
-                Command = vm.ShowVideoSetOffsetCommand,
-            },
-            new MenuItem
-            {
-                Header = l.SmpteTiming,
-                Command = vm.ToggleSmpteTimingCommand,
-                Icon = new Optris.Icons.Avalonia.Icon
-                {
-                    Value = IconNames.CheckBold,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    [!Visual.IsVisibleProperty] = new Binding(nameof(vm.IsSmpteTimingEnabled)),
-                }
-            },
-        };
-
-        var menuItemVideoMore = new MenuItem
-        {
-            Header = Se.Language.General.More,
-            [!MenuItem.IsVisibleProperty] = new Binding(nameof(vm.IsVideoLoaded)),
-        };
-
-        foreach (var item in videoMore.OrderBy(p => p.Header?.ToString()?.TrimStart('_', ' ')))
-        {
-            menuItemVideoMore.Items.Add(item);
-        }
-
+        // The old "Video > More" submenu is gone: it mixed transcoding, a view toggle and
+        // two timing commands under a header that said nothing, three clicks deep and past
+        // the depth where shortcuts used to be drawn. Its entries now sit in the block they
+        // belong to (the two timing ones moved to Synchronization), each keeping the
+        // IsVideoLoaded gate the submenu used to give them.
         menu.Items.Add(new MenuItem
         {
             Header = l.Video,
@@ -717,6 +671,18 @@ public static class InitMenu
                     Header = Se.Language.Video.EmbedSubtitlesDotDotDot,
                     Command = vm.VideoEmbedCommand,
                 },
+                new MenuItem
+                {
+                    Header = Se.Language.Video.CutVideoDotDotDot,
+                    Command = vm.VideoCutCommand,
+                    [!MenuItem.IsVisibleProperty] = new Binding(nameof(vm.IsVideoLoaded)),
+                },
+                new MenuItem
+                {
+                    Header = Se.Language.Video.ReEncodeVideoForBetterSubtitlingDotDotDot,
+                    Command = vm.VideoReEncodeCommand,
+                    [!MenuItem.IsVisibleProperty] = new Binding(nameof(vm.IsVideoLoaded)),
+                },
                 new Separator(),
                 new MenuItem
                 {
@@ -754,8 +720,57 @@ public static class InitMenu
                     Command = vm.VideoRedockControlsCommand,
                     [!MenuItem.IsVisibleProperty] = new Binding(nameof(vm.AreVideoControlsUndocked)),
                 },
+                new MenuItem
+                {
+                    // The menu-side label, which is what the macOS mirror already uses. The
+                    // shortcut-dialog string upstream reused here is empty in some translations.
+                    Header = l.WaveformToolbar,
+                    Command = vm.ToggleIsWaveformToolbarVisibleCommand,
+                    Icon = new Optris.Icons.Avalonia.Icon
+                    {
+                        Value = IconNames.CheckBold,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        [!Visual.IsVisibleProperty] = new Binding(nameof(vm.IsWaveformToolbarVisible)),
+                    }
+                },
+                // Gated with the block it introduces, or the menu ends on a rule with nothing
+                // under it whenever no video is loaded - which is how the app starts.
+                new Separator
+                {
+                    [!Visual.IsVisibleProperty] = new Binding(nameof(vm.IsVideoLoaded)),
+                },
 
-                menuItemVideoMore,
+                // Secondary subtitle shown on the player. Each of these already toggles on
+                // whether a secondary subtitle is loaded, so the video gate they inherited
+                // from the old submenu is re-applied with an AND rather than dropped.
+                new MenuItem
+                {
+                    Header = Se.Language.Video.OpenSecondarySubtitleOnVideoPlayerDotDotDot,
+                    Command = vm.OpenSecondarySubtitleCommand,
+                    [!Visual.IsVisibleProperty] = new MultiBinding
+                    {
+                        Converter = BooleanAndConverter.Instance,
+                        Bindings =
+                        {
+                            new Binding(nameof(vm.IsVideoLoaded)),
+                            new Binding(nameof(vm.IsSubtitleSecondaryVisible)) { Converter = new InverseBooleanConverter() },
+                        },
+                    },
+                },
+                new MenuItem
+                {
+                    Header = Se.Language.Video.RemoveSecondarySubtitleOnVideoPlayer,
+                    Command = vm.ClearSecondarySubtitleCommand,
+                    [!Visual.IsVisibleProperty] = new MultiBinding
+                    {
+                        Converter = BooleanAndConverter.Instance,
+                        Bindings =
+                        {
+                            new Binding(nameof(vm.IsVideoLoaded)),
+                            new Binding(nameof(vm.IsSubtitleSecondaryVisible)),
+                        },
+                    },
+                },
             },
         });
 
@@ -794,6 +809,73 @@ public static class InitMenu
                     Header = l.ChangeSpeed,
                     Command = vm.ShowSyncChangeSpeedCommand,
                 },
+                new Separator(),
+
+                // Duration and gap tuning. These are timing work, but upstream filed them
+                // in Tools, where the alphabetical sort also split the pairs apart.
+                new MenuItem
+                {
+                    // Access key stripped: this label carries "_A", which "Adjust all times"
+                    // above already owns. They were in different menus upstream, so the clash
+                    // is new here, and a duplicate mnemonic stops the key from invoking at all.
+                    Header = l.AdjustDurations.Replace("_", string.Empty),
+                    Command = vm.ShowToolsAdjustDurationsCommand,
+                },
+                new MenuItem
+                {
+                    Header = l.ApplyDurationLimits,
+                    Command = vm.ShowApplyDurationLimitsCommand,
+                },
+                new MenuItem
+                {
+                    Header = l.ApplyMinGap,
+                    Command = vm.ShowApplyMinGapCommand,
+                },
+                new MenuItem
+                {
+                    Header = l.BridgeGaps,
+                    Command = vm.ShowBridgeGapsCommand,
+                },
+                new MenuItem
+                {
+                    Header = l.BeautifyTimeCodes,
+                    Command = vm.ShowBeautifyTimeCodesCommand,
+                },
+                new MenuItem
+                {
+                    Header = l.SnapAllTimesToFrames,
+                    Command = vm.SnapAllTimesToFramesCommand,
+                },
+                // Both items below need a video, so the rule goes with them.
+                new Separator
+                {
+                    [!Visual.IsVisibleProperty] = new Binding(nameof(vm.IsVideoLoaded)),
+                },
+
+                // Promoted out of Video > More: both are timing concepts, and at depth 3
+                // they could never render their shortcut (see StampShortcuts).
+                new MenuItem
+                {
+                    Header = Se.Language.Main.Menu.SetVideoOffset,
+                    [!MenuItem.HeaderProperty] = new Binding(nameof(vm.SetVideoOffsetText)),
+                    Command = vm.ShowVideoSetOffsetCommand,
+                    [!MenuItem.IsVisibleProperty] = new Binding(nameof(vm.IsVideoLoaded)),
+                },
+                new MenuItem
+                {
+                    Header = l.SmpteTiming,
+                    Command = vm.ToggleSmpteTimingCommand,
+                    // Keeps the gate the old submenu gave it: ToggleSmpteTiming returns
+                    // immediately with no message when no video is loaded, so an enabled
+                    // entry there would be a silent no-op.
+                    [!MenuItem.IsVisibleProperty] = new Binding(nameof(vm.IsVideoLoaded)),
+                    Icon = new Optris.Icons.Avalonia.Icon
+                    {
+                        Value = IconNames.CheckBold,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        [!Visual.IsVisibleProperty] = new Binding(nameof(vm.IsSmpteTimingEnabled)),
+                    }
+                },
             }
         });
 
@@ -811,6 +893,13 @@ public static class InitMenu
                 {
                     Header = l.TranslateViaCopyPaste,
                     Command = vm.ShowTranslateViaCopyPasteCommand,
+                },
+                new Separator(),
+                new MenuItem
+                {
+                    // Starting a translation, so it belongs here rather than in Tools.
+                    Header = l.MakeEmptyTranslationFromCurrentSubtitle,
+                    Command = vm.ToolsMakeEmptyTranslationFromCurrentSubtitleCommand,
                 },
             }
         });
@@ -832,83 +921,42 @@ public static class InitMenu
                 },
                 new MenuItem
                 {
-                    Header = l.WordLists,
-                    Command = vm.ShowWordListsCommand,
-                },
-                new MenuItem
-                {
                     Header = l.ChooseLanguage,
                     Command = vm.CommandShowSettingsLanguageCommand,
                 },
-            },
-        });
-
-        menu.Items.Add(new MenuItem
-        {
-            Header = l.HelpTitle,
-            Items =
-            {
-                new MenuItem
-                {
-                    Header = l.CheckForUpdates,
-                    Command = vm.ShowCheckForUpdatesCommand,
-                },
                 new Separator(),
+
+                // These two had no menu home at all upstream - they existed only as toolbar
+                // buttons, so switching the button off made the feature unreachable. There is
+                // no menu-side label for them, so they borrow the Shortcuts dialog's, which
+                // means no access key and a hand-added ellipsis (both open a dialog).
                 new MenuItem
                 {
-                    Header = l.Help,
-                    Command = vm.ShowHelpCommand,
+                    Header = OrFallback(Se.Language.Options.Shortcuts.GeneralChooseLayout, "Choose layout") + "...",
+                    Command = vm.CommandShowLayoutCommand,
                 },
                 new MenuItem
                 {
-                    Header = l.About,
-                    Command = vm.ShowAboutCommand,
+                    Header = OrFallback(Se.Language.Options.Shortcuts.SourceView, "Source view") + "...",
+                    Command = vm.ShowSourceViewCommand,
                 },
-            }
+            },
         });
 
+        var menuItemAssaTools = new MenuItem
+        {
+            Header = l.AssaTools,
+            [!MenuItem.IsVisibleProperty] = new Binding(nameof(vm.IsFormatAssa)),
+        };
 
-        var assaTools = new List<MenuItem>
+        // Ordered by how often they are reached, not alphabetically: the alphabetical build
+        // put Styles - the entry most people open this menu for - dead last.
+        foreach (var item in new List<Control>
         {
             new MenuItem
             {
-                Header = l.AssaProgressBar,
-                Command = vm.ShowAssaGenerateProgressBarCommand,
-            },
-            new MenuItem
-            {
-                Header = l.AssaChangeResolution,
-                Command = vm.ShowAssaChangeResolutionCommand,
-            },
-            new MenuItem
-            {
-                Header = l.AssaGenerateBackground,
-                Command = vm.ShowAssaGenerateBackgroundCommand,
-            },
-            new MenuItem
-            {
-                Header = l.AssaImageColorPicker,
-                Command = vm.ShowAssaImageColorPickerCommand,
-            },
-            new MenuItem
-            {
-                Header = l.AssaSetPosition,
-                Command = vm.ShowAssaSetPositionCommand,
-            },
-            new MenuItem
-            {
-                Header = l.AssaApplyAdvancedEffects,
-                Command = vm.ShowAssaApplyAdvancedEffectCommand,
-            },
-            new MenuItem
-            {
-                Header = l.AssaApplyCustomOverrideTags,
-                Command = vm.ShowAssaApplyCustomOverrideTagsCommand,
-            },
-            new MenuItem
-            {
-                Header = l.AssaDraw,
-                Command = vm.ShowAssaDrawCommand,
+                Header = l.AssaStyles,
+                Command = vm.ShowAssaStylesCommand,
             },
             new MenuItem
             {
@@ -920,30 +968,62 @@ public static class InitMenu
                 Header = l.AssaAttachments,
                 Command = vm.ShowAssaAttachmentsCommand,
             },
+            new Separator(),
+
+            // Placement and effects on the selected lines
             new MenuItem
             {
-                Header = l.AssaStyles,
-                Command = vm.ShowAssaStylesCommand,
+                Header = l.AssaSetPosition,
+                Command = vm.ShowAssaSetPositionCommand,
             },
-        };
+            new MenuItem
+            {
+                Header = l.AssaApplyCustomOverrideTags,
+                Command = vm.ShowAssaApplyCustomOverrideTagsCommand,
+            },
+            new MenuItem
+            {
+                Header = l.AssaApplyAdvancedEffects,
+                Command = vm.ShowAssaApplyAdvancedEffectCommand,
+            },
+            new MenuItem
+            {
+                Header = l.AssaDraw,
+                Command = vm.ShowAssaDrawCommand,
+            },
+            new Separator(),
 
-        var menuItemAssaTools = new MenuItem
-        {
-            Header = l.AssaTools,
-            [!MenuItem.IsVisibleProperty] = new Binding(nameof(vm.IsFormatAssa)),
-        };
-
-        foreach (var item in assaTools.OrderBy(p => p.Header?.ToString()?.Replace("_", string.Empty)))
+            // Generators and document-wide settings
+            new MenuItem
+            {
+                Header = l.AssaGenerateBackground,
+                Command = vm.ShowAssaGenerateBackgroundCommand,
+            },
+            new MenuItem
+            {
+                Header = l.AssaProgressBar,
+                Command = vm.ShowAssaGenerateProgressBarCommand,
+            },
+            new MenuItem
+            {
+                Header = l.AssaImageColorPicker,
+                Command = vm.ShowAssaImageColorPickerCommand,
+            },
+            new MenuItem
+            {
+                Header = l.AssaChangeResolution,
+                Command = vm.ShowAssaChangeResolutionCommand,
+            },
+            new Separator(),
+            new MenuItem
+            {
+                Header = l.FilterLayersForDisplayDotDotDot,
+                Command = vm.ShowPickLayerFilterCommand,
+            },
+        })
         {
             menuItemAssaTools.Items.Add(item);
         }
-
-        menuItemAssaTools.Items.Add(new Separator());
-        menuItemAssaTools.Items.Add(new MenuItem
-        {
-            Header = l.FilterLayersForDisplayDotDotDot,
-            Command = vm.ShowPickLayerFilterCommand,
-        });
 
         menu.Items.Add(menuItemAssaTools);
 
@@ -968,6 +1048,32 @@ public static class InitMenu
             Command = vm.ShowSsaAttachmentsCommand,
         });
         menu.Items.Add(menuItemSsaTools);
+
+        // Added last so Help is the rightmost menu. The format-specific menus above are
+        // conditional, so upstream's order put them after Help whenever they were shown.
+        menu.Items.Add(new MenuItem
+        {
+            Header = l.HelpTitle,
+            Items =
+            {
+                new MenuItem
+                {
+                    Header = l.CheckForUpdates,
+                    Command = vm.ShowCheckForUpdatesCommand,
+                },
+                new Separator(),
+                new MenuItem
+                {
+                    Header = l.Help,
+                    Command = vm.ShowHelpCommand,
+                },
+                new MenuItem
+                {
+                    Header = l.About,
+                    Command = vm.ShowAboutCommand,
+                },
+            }
+        });
     }
 
     public static void UpdateRecentFiles(MainViewModel vm)
@@ -1072,15 +1178,21 @@ public static class InitMenu
     private static void DisplayShortcuts(Menu menu, MainViewModel vm)
     {
         List<ShortCut> availableShortcuts = ShortcutsMain.GetUsedShortcuts(vm);
+        StampShortcuts(menu.Items.OfType<MenuItem>(), availableShortcuts);
+    }
 
-        foreach (var item in menu.Items.OfType<MenuItem>())
+    /// <summary>
+    /// Stamps the accelerator text on every menu item at any depth. This walked only two
+    /// levels before, so items in a submenu of a submenu (File > Import/Export > *) never
+    /// showed their shortcut even when one was bound - the key still fired, the hint was
+    /// just invisible.
+    /// </summary>
+    private static void StampShortcuts(IEnumerable<MenuItem> items, List<ShortCut> availableShortcuts)
+    {
+        foreach (var item in items)
         {
             item.InputGesture = GetKeyGesture(availableShortcuts, item.Command);
-
-            foreach (var subItem in item.Items.OfType<MenuItem>())
-            {
-                subItem.InputGesture = GetKeyGesture(availableShortcuts, subItem.Command);
-            }
+            StampShortcuts(item.Items.OfType<MenuItem>(), availableShortcuts);
         }
     }
 

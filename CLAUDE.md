@@ -119,8 +119,81 @@ Decisions + hard-won facts (adversarial review, probe-verified — do not re-der
 - Phase 1's "UiUtil.cs 2-line delegation" note is superseded: UiUtil.cs now also carries the
   commented FocusedButtonBrush hook.
 
+**Done:** Phase 4 (2026-07-27) — menu re-grouping, the last roadmap item. All of it is in
+`InitMenu.cs`; the safety net proved the point (baseline diff was **+2 / −0**).
+
+What moved and why:
+- **Tools 25 → 18**, alphabetical build-time sort dropped for four hand-ordered blocks
+  (find-and-fix / merge lines / split+order / whole-file). The sort was splitting obvious
+  siblings ("Adjust durations" from "Apply duration limits", via "AI review") and re-ordered
+  the whole menu in every other UI language, so no muscle memory was possible. Same treatment
+  for **ASSA tools** (Styles/Properties/Attachments first — the sort had buried Styles last).
+- **Synchronization 6 → 14**: the six timing commands upstream filed under Tools, plus
+  Set video offset and SMPTE timing promoted out of `Video > More`.
+- **`Video > More` dissolved.** It mixed transcoding, a view toggle and two timing commands
+  under a header that said nothing, at depth 3 — where `DisplayShortcuts` never reached.
+- **Spell check ← Word lists** (it is the data spell check reads), **Translate ← Make new
+  empty translation**, **Help last** (ASSA/SSA were appended after it).
+- **Options gained Layout + Source view**, which had *no* menu home upstream: they existed
+  only as toolbar buttons, so switching the button off made the feature unreachable. Headers
+  reuse `Se.Language.Options.Shortcuts.GeneralChooseLayout` / `.SourceView`, already
+  translated everywhere, so **no language file was touched**. This is the whole 143 → 145.
+- **File > Export**: the two text-format exports moved above the 18 image/broadcast formats.
+
+Fixes made while in there:
+- `DisplayShortcuts` only walked two levels, so every depth-3 item (all of Import/Export,
+  all of `Video > More`) silently showed no accelerator even with a shortcut bound. It now
+  recurses (`StampShortcuts`).
+- `menu.Opened` and `menu.Styles` accumulated one copy per language switch. Both are now
+  detached/cleared first, and the handler is a single stateless static that reads the Menu
+  and view model off the event sender, so it stays correct with several windows open.
+
+Decisions — do not re-litigate:
+- **The macOS mirror (`InitNativeMacMenu.cs`) was deliberately NOT updated.** It is a
+  hand-written parallel structure with no test coverage that had already drifted from
+  `InitMenu` before this change (`ExportImscImageCommand` and the whole SSA menu are missing
+  there). This fork is Windows-only; mac keeps upstream's arrangement. Deriving it from
+  `InitMenu` would be a real fix, but it is its own project.
+- **Every video-dependent command kept its gate.** Dissolving `More` meant re-applying by
+  hand the `IsVideoLoaded` binding that container used to provide: Cut video, Re-encode
+  video, Set video offset and SMPTE timing carry it directly (`ToggleSmpteTiming` returns
+  immediately with no message when there is no video, so an enabled entry would be a silent
+  no-op), and the secondary-subtitle pair keeps *both* conditions through a `MultiBinding`
+  with `BooleanAndConverter` rather than dropping one. The separators introducing those
+  blocks are gated too, or the menu ends on a rule with nothing under it — which is the
+  app's startup state. **Toggle waveform toolbar is the one deliberate un-gating**: it only
+  flips a bool the waveform strip binds, and that strip exists without a video.
+- **Two label traps, both hit here.** The waveform entry now uses `Main.Menu.WaveformToolbar`
+  (what the macOS mirror already used) instead of upstream's `Options.Shortcuts.*` string,
+  which is empty in some translations. Layout and Source view have no menu-side key at all,
+  so they borrow the Shortcuts labels through `OrFallback` — an empty JSON value overrides
+  the English C# default, which would otherwise render blank rows. Those two consequently
+  have no access key, and their ellipsis is appended in code.
+- **Access keys can collide when items move.** "Adjust durations" carries `_A`, which
+  "Adjust all times" already owned in Synchronization; a duplicate mnemonic stops the key
+  from invoking at all (it only moves focus). The moved item's underscore is stripped at the
+  call site. Check for this whenever an item changes menus.
+
+Traps for anyone touching this menu again:
+- **Two commands are invisible to the safety net**: `CommandFileClearRecentFilesCommand`
+  (File > Reopen) and `RunPluginCommand` (Plugins) only exist inside runtime-filled
+  containers, which are empty in the headless test. Delete either and all four tests stay
+  green. Guard them by hand.
+- **Three items are visible/hidden PAIRS sharing one command** (`RightToLeftToggleCommand`
+  in Edit, `ToggleCurrentSubtitleWhilePlayingCommand` in Video). Dropping exactly one half
+  also keeps the tests green while leaving a permanently-stuck entry — move pairs together.
+- `vm.MenuReopen`, `vm.MenuPlugins` and `vm.AudioTraksMenuItem` must stay the *same
+  instances* published on the view model; their runtime fillers find them by reference and
+  will silently mutate an orphan otherwise.
+- Regenerate the baseline (`./tools/build.ps1 menu-baseline`) only on a plugin-free machine —
+  installed plugins add `RunPluginCommand` to the inventory. The task deletes the file first,
+  so always review `git diff` on it: **a removed line means lost functionality.**
+
+Known drift this created: `docs/` still describes some old menu paths (Tools > for the
+commands that moved to Synchronization, Options > Word lists). Accepted for now.
+
 Roadmap: ~~1 palette/surfaces~~ → ~~2 typography~~ → ~~3 accent gradient + translucent
-overlays~~ → 4 menu re-grouping.
+overlays~~ → ~~4 menu re-grouping~~. **The UI/UX rework is complete.**
 
 `.claude/settings.json` holds a permission allowlist for the usual dotnet/git commands. Upstream's
 `.gitignore` excludes `.claude/`, so it is **local-only and not in the repo** — recreate it by hand
@@ -240,7 +313,7 @@ so that is enforced by test, not by promise.
 
 `tests/UI/Features/Main/Layout/MainMenuInventoryTests.cs` resolves the real `MainViewModel` from
 the DI container, builds the menu via `InitMenu.Make`, and compares the set of reachable commands
-against `main-menu-inventory.baseline.txt` (**143 commands**).
+against `main-menu-inventory.baseline.txt` (**145 commands** since Phase 4; 143 at Phase 0).
 
 Entries are keyed by **`MainViewModel` command property name — never by menu path or header text**,
 because paths and wording are exactly what we intend to change, and header text moves with
