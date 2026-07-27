@@ -1,5 +1,6 @@
 using Avalonia.Media;
 using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.Theming.Nakatashi;
 
 namespace Nikse.SubtitleEdit.Logic.Plugins;
 
@@ -47,7 +48,12 @@ internal static class PluginThemeColorsFactory
             IsDark = isDark,
             BackgroundColor = background.FromColorToHex(),
             ForegroundColor = foreground.FromColorToHex(),
-            AccentColor = appearance.FocusedButtonBackgroundColor,
+            // Fork (Nakatashi): the active accent is the theme gradient, which a single hex
+            // cannot express - export its middle stop so plugin UIs stay on-brand. (The
+            // focused-button hex is no longer painted anywhere while Nakatashi is active.)
+            AccentColor = NakatashiTheme.TryGetPalette(UiTheme.ThemeName, out var nakatashiPalette)
+                ? nakatashiPalette.AccentMid.FromColorToHex()
+                : appearance.FocusedButtonBackgroundColor,
             BackgroundColorLighter = UiUtil.LightenColor(background, 5).FromColorToHex(),
             BackgroundColorHeader = UiUtil.LightenColor(background, 15).FromColorToHex(),
             BookmarkColor = appearance.BookmarkColor,

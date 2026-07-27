@@ -47,6 +47,25 @@ public sealed class NakatashiPalette
     public required Color BorderStrong { get; init; }
 
     /// <summary>
+    /// Gemini-glow accent gradient stops (left → mid → right), from the Deep Gray reference:
+    /// blue #4a77ff → purple #a374ff → coral #ff8a75. Painted only on ACTIVE elements
+    /// (focus rings, selection, menu highlight) - never on resting surfaces.
+    /// </summary>
+    public required Color AccentStart { get; init; }
+
+    public required Color AccentMid { get; init; }
+
+    public required Color AccentEnd { get; init; }
+
+    /// <summary>
+    /// Darker warm terminus for FILL surfaces that carry primary text (selected rows/items).
+    /// Measured: #FF8A75 at the stock 0.6 selection opacity over Base composites to ~4.2:1
+    /// against TextPrimary - below the WCAG AA 4.5:1 floor; this stop lands ~5.2:1.
+    /// Rings/borders keep <see cref="AccentEnd"/>, where the full coral measures strongest.
+    /// </summary>
+    public required Color AccentEndFill { get; init; }
+
+    /// <summary>
     /// Claude-desktop style: refined neutral charcoal, no color tint.
     /// Reference: main #191919, containers #222222.
     /// </summary>
@@ -63,6 +82,10 @@ public sealed class NakatashiPalette
         TextSecondary = Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF),
         BorderSubtle = Color.FromArgb(0x0D, 0xFF, 0xFF, 0xFF),
         BorderStrong = Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF),
+        AccentStart = Color.FromRgb(0x4A, 0x77, 0xFF),
+        AccentMid = Color.FromRgb(0xA3, 0x74, 0xFF),
+        AccentEnd = Color.FromRgb(0xFF, 0x8A, 0x75),
+        AccentEndFill = Color.FromRgb(0xD9, 0x70, 0x5C),
     };
 
     /// <summary>
@@ -82,5 +105,9 @@ public sealed class NakatashiPalette
         TextSecondary = Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF),
         BorderSubtle = Color.FromArgb(0x0D, 0xFF, 0xFF, 0xFF),
         BorderStrong = Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF),
+        AccentStart = Color.FromRgb(0x4A, 0x77, 0xFF),
+        AccentMid = Color.FromRgb(0xA3, 0x74, 0xFF),
+        AccentEnd = Color.FromRgb(0xFF, 0x8A, 0x75),
+        AccentEndFill = Color.FromRgb(0xD9, 0x70, 0x5C),
     };
 }
