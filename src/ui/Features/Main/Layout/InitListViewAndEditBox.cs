@@ -455,6 +455,7 @@ public static partial class InitListViewAndEditBox
                 {
                     VerticalAlignment = VerticalAlignment.Center,
                     TextWrapping = TextWrapping.Wrap,
+                    FontFeatures = TabularFigures, // see the start column above
                     [!TextBlock.TextProperty] = new Binding(nameof(SubtitleLineViewModel.Gap)) { Converter = gapConverter, Mode = BindingMode.OneWay },
                 };
 
@@ -502,6 +503,7 @@ public static partial class InitListViewAndEditBox
                 {
                     VerticalAlignment = VerticalAlignment.Center,
                     TextWrapping = TextWrapping.Wrap,
+                    FontFeatures = TabularFigures, // see the start column above
                     [!TextBlock.TextProperty] = new Binding(nameof(SubtitleLineViewModel.CharactersPerSecond)) { Converter = cpsWmpConverter, Mode = BindingMode.OneWay },
                 };
 
@@ -534,6 +536,7 @@ public static partial class InitListViewAndEditBox
                 {
                     VerticalAlignment = VerticalAlignment.Center,
                     TextWrapping = TextWrapping.Wrap,
+                    FontFeatures = TabularFigures, // see the start column above
                     [!TextBlock.TextProperty] = new Binding(nameof(SubtitleLineViewModel.WordsPerMinute)) { Converter = cpsWmpConverter, Mode = BindingMode.OneWay },
                 };
 
@@ -560,6 +563,7 @@ public static partial class InitListViewAndEditBox
                 {
                     VerticalAlignment = VerticalAlignment.Center,
                     TextWrapping = TextWrapping.Wrap,
+                    FontFeatures = TabularFigures, // see the start column above
                     [!TextBlock.TextProperty] = new Binding(nameof(SubtitleLineViewModel.PixelWidth)) {  Mode = BindingMode.OneWay },
                 };
                 return textBlock;
