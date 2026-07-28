@@ -10,6 +10,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Nikse.SubtitleEdit.Logic.Theming.Nakatashi;
 using System;
 using System.Collections;
 using Nikse.SubtitleEdit.Features.Files.Compare;
@@ -683,7 +684,10 @@ public class FixCommonErrorsWindow : Window
                             TextWrapping = TextWrapping.NoWrap,
                             [!TextBlock.InlinesProperty] = new Binding(nameof(SubtitleLineViewModel.Text)) { Converter = syntaxHighlightingConverter },
                         };
-                        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
+                        // Fork (Nakatashi): skip the local pin while the typography chain owns this surface
+                        // (see NakatashiTheme.OwnsSubtitleFont) - a local value always beats app-level styles.
+                        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
+                            && !NakatashiTheme.OwnsSubtitleFont(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
                         {
                             textBlock.FontFamily = new FontFamily(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName);
                         }
@@ -777,7 +781,10 @@ public class FixCommonErrorsWindow : Window
                 UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
             },
         };
-        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
+        // Fork (Nakatashi): skip the local pin while the typography chain owns this surface
+        // (see NakatashiTheme.OwnsSubtitleFont) - a local value always beats app-level styles.
+        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
+            && !NakatashiTheme.OwnsSubtitleFont(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
         {
             textBox.FontFamily = new FontFamily(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName);
         }

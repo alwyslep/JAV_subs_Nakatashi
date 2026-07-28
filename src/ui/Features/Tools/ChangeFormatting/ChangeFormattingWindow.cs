@@ -4,6 +4,7 @@ using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Nikse.SubtitleEdit.Logic.Theming.Nakatashi;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.ValueConverters;
@@ -145,7 +146,10 @@ public class ChangeFormattingWindow : Window
                             [!TextBlock.InlinesProperty] = new Binding(nameof(ChangeFormattingDisplayItem.Text)) { Converter = colorConverter, Mode = BindingMode.OneWay },
                         };
 
-                        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
+                        // Fork (Nakatashi): skip the local pin while the typography chain owns this surface
+                        // (see NakatashiTheme.OwnsSubtitleFont) - a local value always beats app-level styles.
+                        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
+                            && !NakatashiTheme.OwnsSubtitleFont(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
                         {
                             textBlock.FontFamily = new FontFamily(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName);
                         }
@@ -174,7 +178,10 @@ public class ChangeFormattingWindow : Window
                             [!TextBlock.InlinesProperty] = new Binding(nameof(ChangeFormattingDisplayItem.NewText)) { Converter = colorConverter, Mode = BindingMode.OneWay },
                         };
 
-                        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
+                        // Fork (Nakatashi): skip the local pin while the typography chain owns this surface
+                        // (see NakatashiTheme.OwnsSubtitleFont) - a local value always beats app-level styles.
+                        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
+                            && !NakatashiTheme.OwnsSubtitleFont(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
                         {
                             textBlock.FontFamily = new FontFamily(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName);
                         }

@@ -7,6 +7,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Nikse.SubtitleEdit.Logic.Theming.Nakatashi;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using System;
@@ -94,6 +95,13 @@ public partial class PromptUnknownWordViewModel : ObservableObject
     {
         var textBlock = new TextBlock();
         var fontName = Se.Settings.Appearance.SubtitleTextBoxAndGridFontName;
+        // Fork (Nakatashi): clear the name once instead of guarding each pin below - they are all
+        // gated on !IsNullOrEmpty, so emptying it here lets the typography chain reach them.
+        if (NakatashiTheme.OwnsSubtitleFont(fontName))
+        {
+            fontName = string.Empty;
+        }
+
         if (!string.IsNullOrEmpty(fontName))
         {
             textBlock.FontFamily = new FontFamily(fontName);
