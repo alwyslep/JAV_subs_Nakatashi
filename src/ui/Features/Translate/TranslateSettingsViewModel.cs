@@ -8,6 +8,7 @@ using Nikse.SubtitleEdit.Core.Common;
 using Nikse.SubtitleEdit.Features.Shared;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
+using System;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 
@@ -39,6 +40,46 @@ public partial class TranslateSettingsViewModel : ObservableObject
     private void Cancel()
     {
         Window?.Close();
+    }
+
+    /// <summary>
+    /// Fork: the shipped default prompt for an engine, or null when the engine takes no prompt.
+    /// Mirrors the fallbacks <see cref="LoadValues"/> uses, in one expression so Reset cannot
+    /// drift away from them.
+    /// </summary>
+    private static string? DefaultPromptFor(Type? engineType)
+    {
+        var d = new SeAutoTranslate();
+        if (engineType == typeof(ChatGptTranslate)) { return d.ChatGptPrompt; }
+        if (engineType == typeof(OpenAiCompatibleTranslate)) { return d.OpenAiCompatiblePrompt; }
+        if (engineType == typeof(OllamaTranslate)) { return d.OllamaPrompt; }
+        if (engineType == typeof(LmStudioTranslate)) { return d.LmStudioPrompt; }
+        if (engineType == typeof(AnthropicTranslate)) { return d.AnthropicPrompt; }
+        if (engineType == typeof(PerplexityTranslate)) { return d.PerplexityPrompt; }
+        if (engineType == typeof(GroqTranslate)) { return d.GroqPrompt; }
+        if (engineType == typeof(OpenRouterTranslate)) { return d.OpenRouterPrompt; }
+        if (engineType == typeof(NvidiaTranslate)) { return d.NvidiaPrompt; }
+        if (engineType == typeof(MistralTranslate)) { return d.MistralPrompt; }
+        if (engineType == typeof(GeminiTranslate)) { return d.GeminiPrompt; }
+        if (engineType == typeof(DeepSeekTranslate)) { return d.DeepSeekPrompt; }
+        if (engineType == typeof(LlamaCppTranslate)) { return d.LlamaCppPrompt; }
+        return null;
+    }
+
+    /// <summary>
+    /// Fork: put the shipped prompt back. Without this there is no way out of a broken prompt -
+    /// LoadValues only falls back to the default when the stored value is blank, so anything
+    /// non-empty is sticky forever and the user would have to retype the original from memory.
+    /// The AI review prompt editor has had this button all along; translation had not.
+    /// </summary>
+    [RelayCommand]
+    private void ResetToDefault()
+    {
+        var defaultPrompt = DefaultPromptFor(AutoTranslator?.GetType());
+        if (defaultPrompt != null)
+        {
+            PromptText = defaultPrompt;
+        }
     }
 
     [RelayCommand]
