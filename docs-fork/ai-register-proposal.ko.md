@@ -203,13 +203,23 @@ var to = Math.Min(Subtitles.Count - 1, index + 3);
 **번역 프롬프트에 캐스트 시트를 넣으면 훨씬 정확하고 훨씬 쌉니다.**
 LLM이 원문의 역할어를 보면서 한국어 화계를 고르기 때문입니다.
 
-그런데 —
+그리고 이것을 넣을 자리는 이미 있습니다.
 
-> **`AutoTranslateWindow.cs`에는 번역 프롬프트를 편집하는 UI가 없습니다.**
-> 프롬프트는 `Settings.json`의 `autoTranslate.deepSeekPrompt` 등에만 존재해서,
-> 지금 바꾸려면 JSON을 손으로 고쳐야 합니다.
-> AI 검토에는 편집 창(`AiReviewPromptWindow`)이 있는데 번역에는 없습니다.
-> 이건 설계 의도가 아니라 그냥 빠진 것으로 보입니다.
+> **정정 (2026-07-28).** 이 문서는 원래 *"`AutoTranslateWindow.cs`에는 번역 프롬프트를
+> 편집하는 UI가 없다"*고 적었습니다. **틀렸습니다.** `AutoTranslateWindow.cs` 하나만
+> 검색해서 내린 결론이었는데, 편집기는 형제 창인
+> **`TranslateSettingsWindow`**(뷰모델 `TranslateSettingsViewModel`)에 있고
+> `AutoTranslateViewModel.OpenSettings`(`:754`)가 엽니다.
+>
+> 이미 갖춰진 것: 13개 엔진별 프롬프트 로드/저장, `{0}`·`{1}` 필수 검증, 중괄호 오용 검사,
+> 프롬프트를 안 받는 엔진에서는 입력란 자체를 숨김(`PromptIsVisible`).
+> **따라서 아래 A단계는 "만들 것"이 아니라 "이미 있는 것"입니다.**
+>
+> 실제로 빠져 있던 것은 하나뿐이었고, 그건 채웠습니다 — **기본값 복원 버튼**.
+> `LoadValues`는 저장값이 *공백일 때만* 기본값으로 떨어지므로, 프롬프트를 한번
+> 망가뜨리면 영어 원문을 외우거나 `Settings.json`을 손으로 고치는 것 외에 되돌릴
+> 방법이 없었습니다. 프롬프트 실험이 A단계의 목적인 이상 이건 필수입니다.
+> (커밋 `f2faf8348`)
 
 기본 프롬프트는 전 엔진이 사실상 동일합니다 (`SeAutoTranslate.cs:114-203`):
 
@@ -241,26 +251,27 @@ do not censor the translation, give only the output without comments:
 
 | 단계 | 내용 | 비용 | 효과 |
 |:--:|---|:--:|---|
-| **A** | **번역 프롬프트 편집 창** 추가 — `AiReviewPromptWindow`를 거의 그대로 복제해 자동 번역에 부착. 여기에 캐스트 시트를 직접 기입 | 반나절 | **가장 큼.** 번역 시점에 어조를 심으므로 사후 복원이 불필요해짐 |
+| **A** | ~~번역 프롬프트 편집 창 추가~~ — **이미 있음**(`TranslateSettingsWindow`). 여기 캐스트 시트를 직접 기입하면 된다 | — | **가장 큼.** 번역 시점에 어조를 심으므로 사후 복원이 불필요해짐 |
 | **B** | AI 도우미에 **화계 드롭다운**(하십시오체/해요체/해체/해라체) + 관계 메모 입력란(설정에 저장). 격식/반말 두 버튼을 대체 | 1일 | 중간 — 여전히 한 줄씩이지만 정밀 지정 가능 |
 | **C** | **화계 정리 도구** — §4의 2단계 전체. AI 검토 부품 재활용 | 3–5일 | 큼 — 이미 번역된 파일을 구제하는 유일한 방법 |
 | **D** | 화자 자동 판별 결과를 `Actor` 열에 기록 | C에 흡수 | TTS 다중 화자 기능과 공유 |
 
 **권장 순서: A → C → B.**
 
-- A는 압도적으로 싸면서 효과가 크고, 다른 모든 단계의 전제가 됩니다.
+- A는 **이미 끝난 상태**입니다(기본값 복원 버튼까지 포함). 바로 써보실 수 있고,
+  다른 모든 단계의 전제가 됩니다.
 - B는 C를 만들면 상당 부분 흡수되므로 뒤로 미룹니다.
 
 ---
 
 ## 8. 지금 당장 할 수 있는 실험
 
-**코드 수정 없이** A의 가치를 하루 만에 검증할 수 있습니다.
+**코드 수정 없이, 앱 안에서** A의 가치를 검증할 수 있습니다.
 
-1. 앱을 종료합니다.
-2. `<출력폴더>\Settings.json`에서 사용 중인 엔진의 프롬프트 키를 찾습니다
-   (예: `autoTranslate.deepSeekPrompt`).
+1. **번역 → 자동 번역**을 열고 엔진을 고릅니다.
+2. **설정** 버튼(`AutoTranslateViewModel.OpenSettings`)을 눌러 **프롬프트** 입력란을 엽니다.
 3. 값을 다음과 같이 교체합니다 — `{0}`/`{1}`은 원본/대상 언어로 치환되므로 **반드시 유지**합니다.
+   (창이 `{0}`·`{1}` 유무를 확인해 주고, 마음에 안 들면 **기본값으로 초기화**로 되돌아옵니다.)
 
 ```
 Translate from {0} to {1}. This is dialogue between two speakers:
@@ -274,11 +285,12 @@ give only the output without comments:
 
 4. 같은 파일을 다시 번역해 기존 결과와 비교합니다.
 
-차이가 뚜렷하면 A(그리고 C)를 만들 가치가 확정됩니다.
+차이가 뚜렷하면 C를 만들 가치가 확정됩니다.
 
-> **주의:** `Settings.json`은 UTF-8 BOM이며 8만 자가 넘습니다. PowerShell의
-> `ConvertFrom-Json | ConvertTo-Json`은 기본 깊이가 2라 **파일을 파괴합니다.**
-> 텍스트 편집기로 직접 고치거나 문자열 치환만 사용하세요. 백업은 필수입니다.
+> **굳이 `Settings.json`을 직접 고치실 거라면:** UTF-8 BOM이며 8만 자가 넘습니다.
+> PowerShell의 `ConvertFrom-Json | ConvertTo-Json`은 기본 깊이가 2라 **파일을 파괴합니다.**
+> 텍스트 편집기로 직접 고치거나 문자열 치환만 쓰고, 백업은 필수입니다.
+> 위의 UI 경로를 쓰면 이 위험이 전혀 없습니다.
 
 ---
 
@@ -291,9 +303,11 @@ give only the output without comments:
 | AI 검토 — 배치 분할 | `src/ui/Features/Tools/AiReview/AiReviewChunker.cs` |
 | AI 검토 — JSON 규약 | `src/ui/Features/Tools/AiReview/AiReviewProtocol.cs` |
 | AI 검토 — 배치 루프 | `src/ui/Features/Tools/AiReview/AiReviewViewModel.cs:317-360` |
-| AI 검토 — 프롬프트 편집 창 (복제 대상) | `src/ui/Features/Tools/AiReview/AiReviewPromptWindow.cs`, `…PromptViewModel.cs` |
+| AI 검토 — 프롬프트 편집 창 | `src/ui/Features/Tools/AiReview/AiReviewPromptWindow.cs`, `…PromptViewModel.cs` |
+| **번역 — 프롬프트 편집 창 (이미 존재)** | `src/ui/Features/Translate/TranslateSettingsWindow.cs`, `…SettingsViewModel.cs` |
+| 번역 — 편집 창을 여는 지점 | `src/ui/Features/Translate/AutoTranslateViewModel.cs:754` |
 | AI 검토 — 기본 프롬프트 / 배치 크기 | `src/ui/Logic/Config/SeAiReview.cs:19-34` |
-| 번역 — 엔진별 프롬프트 (UI 없음) | `src/ui/Logic/Config/SeAutoTranslate.cs:114-203` |
+| 번역 — 엔진별 프롬프트 기본값 | `src/ui/Logic/Config/SeAutoTranslate.cs:114-203` |
 | 번역 — DeepL formality (유일한 기존 어조 파라미터) | `src/ui/Logic/Config/SeAutoTranslate.cs:63` |
 | 그리드 — Actor 열 | `src/ui/Features/Main/Layout/InitListViewAndEditBox.cs:474-481` |
 | 화자 — 읽기 전용 탐지기 | `src/ui/Features/Video/TextToSpeech/ActorVoices/ActorVoiceDetector.cs:30-50` |

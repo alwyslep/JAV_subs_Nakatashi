@@ -8,7 +8,7 @@ renamed — the solution, assemblies, and namespaces are deliberately unchanged 
 - `origin`   → `https://github.com/alwyslep/JAV_subs_Nakatashi.git`
 - `upstream` → `https://github.com/SubtitleEdit/subtitleedit.git`
 
-## Where we are (2026-07-27)
+## Where we are (2026-07-28)
 
 Goal: re-skin the UI in a modern "Deep Gray" dark design system (the reference doc is
 `C:\Users\geech\Documents\배경색 및 다크 모드 (The Deep Gray Palette).md` — Gemini / Claude-desktop
@@ -72,11 +72,9 @@ Hard-won facts (adversarial review, all probe-verified — do not re-derive):
 - Ordering guarantee: `SetFontName` runs BEFORE `SetCurrentTheme` at startup
   (`Program.ConfigureApplication`) and on settings save (`MainViewModel.ApplySettings`), so the
   theme's later-added font styles always win.
-- **Accepted scope (decision, not oversight):** ~20 tool-window sites (SpellCheck, FixCommonErrors,
-  OCR family, ConvertActors, ChangeFormatting…) still pin local `"Default"` and render the OS
-  font under Nakatashi, as does AvaloniaEdit `TextEditor` (Source view / media info). Byte-identical
-  to upstream; extend coverage only as a deliberate later step. Pretendard JP ships 400/700 only,
-  so SemiBold kanji closest-matches to 700 (Korean UI headers rarely contain kanji).
+- ~~**Accepted scope:** ~20 tool-window sites still pin local `"Default"`…~~ **Closed in Phase 6
+  (2026-07-28)** — see below. Pretendard JP ships 400/700 only, so SemiBold kanji closest-matches
+  to 700 (Korean UI headers rarely contain kanji).
 - macOS never activates the chain (FontName defaults to "Helvetica Neue" — an explicit choice
   that also works around the caret bug).
 
@@ -189,8 +187,8 @@ Traps for anyone touching this menu again:
   installed plugins add `RunPluginCommand` to the inventory. The task deletes the file first,
   so always review `git diff` on it: **a removed line means lost functionality.**
 
-Known drift this created: `docs/` still describes some old menu paths (Tools > for the
-commands that moved to Synchronization, Options > Word lists). Accepted for now.
+~~Known drift this created: `docs/` still describes some old menu paths.~~ **Fixed in Phase 6**
+(2026-07-28) — 14 paths across 9 files, each checked against `InitMenu.cs` rather than inferred.
 
 **Done:** Phase 5 (2026-07-27) — subtitle grid legibility. Three small, independent changes:
 
@@ -241,8 +239,57 @@ survives a downgrade will keep newer strings.
 Also note `SeGeneral`'s defaults only apply to a **fresh** settings file — an existing
 `Settings.json` keeps whatever it stores, so a default flip is invisible to current users.
 
+**Done:** Phase 6 (2026-07-28) — the loose ends the earlier phases deliberately parked.
+
+- **Font chain reaches the tool windows.** Phase 2's parked ~20 sites are done: 24 sites take
+  the one-line `&& !NakatashiTheme.OwnsSubtitleFont(...)` guard Phase 2 established (a script
+  applied them; the exact upstream one-liner was byte-identical everywhere). Three needed a
+  different shape — `SpellCheckViewModel` / `PromptUnknownWordViewModel` hold the name in a local
+  reused across 4 and 6 pins, so the local is emptied **once** (`string.Empty`, not `null` — the
+  property is non-nullable and the tree must stay at 0 warnings); `OcrViewModel` assigns
+  `TextBoxFontFamily` *unconditionally*, so skipping is not enough and the new
+  `NakatashiTheme.SubtitleSurfaceFont` hands it the chain instead.
+  **AvaloniaEdit `TextEditor` is now a deliberate exclusion, not a leftover** — it pins no font at
+  all and inherits AvaloniaEdit's monospace default, which is *correct* for source view (line
+  numbers, timecode columns) and media info (key/value dump). A proportional face makes both worse.
+- **`tnum` on the last four numeric columns** (gap, CPS, WPM, pixel width). The number column is
+  left alone on purpose: it is centre-aligned in a StackPanel beside the bookmark icon and built
+  through a fluent `UiUtil.MakeLabel().WithBindText()` expression — small gain, large diff.
+- **`docs/` menu paths fixed** (14 spots / 9 files), each verified against `InitMenu.cs`.
+  Also caught: `faq.md` ×2 and `audio-visualizer.md` pointed at `Video > More`, which Phase 4
+  dissolved entirely.
+- **Translation prompt editor got a reset button.** *Correction to the fork's own docs:* the
+  editor was NOT missing — `TranslateSettingsWindow` (opened by `AutoTranslateViewModel.OpenSettings`)
+  has had per-engine prompt load/save for 13 engines plus `{0}`/`{1}` validation all along. The
+  earlier note in `docs-fork/ai-register-proposal.ko.md` claimed otherwise because it grepped only
+  `AutoTranslateWindow.cs`; both docs are corrected. What was genuinely missing is recovery:
+  `LoadValues` falls back to the shipped default only when the stored prompt is **blank**, so any
+  non-empty edit was sticky forever. The label reuses `Se.Language.Tools.AiReview.ResetToDefault`
+  (present and non-empty in **all 32** language files) so **no language file was touched**.
+
+**Trap worth keeping:** the script that applied the 24 guards wrote with Python's `utf-8-sig`,
+which adds a BOM unconditionally — it silently added one to 12 files that had none, dirtying the
+first line of each. Caught by diffing the working tree against `git show HEAD:<file>` byte-wise.
+Any bulk rewrite of upstream files must **preserve the original BOM state and line endings per
+file** (this repo is LF-only, no CRLF).
+
 Roadmap: ~~1 palette/surfaces~~ → ~~2 typography~~ → ~~3 accent gradient + translucent
-overlays~~ → ~~4 menu re-grouping~~ → ~~5 grid legibility~~. **The UI/UX rework is complete.**
+overlays~~ → ~~4 menu re-grouping~~ → ~~5 grid legibility~~ → ~~6 parked loose ends~~.
+**The UI/UX rework is complete.**
+
+## Sibling project: `srt-translator`
+
+`C:\Users\geech\dev2\jav\subtitles\srt-translator` (repo `alwyslep/srt-translator`) is where the
+Japanese→Korean translation actually happens (PySubtrans + Gemini/DeepSeek). **Speech-register
+(화계) work belongs there, not here** — the relationship information lives only in the Japanese
+role language and is destroyed the moment the Korean SRT exists. Subtitle Edit can only patch
+after the fact.
+
+A `feat/register` branch is checked out as a **git worktree** at
+`…\subtitles\srt-translator-register` (`git worktree add` does not need a clean tree, so the
+main worktree's in-progress edits stay untouched). Three Python-specific gotchas: venvs are
+per-worktree and `.gitignore` does not cover `.venv/`; `%APPDATA%\AI-SRT-Translator\terminology\`
+is **shared** between worktrees, so an A/B comparison cross-contaminates the term snapshots.
 
 `.claude/settings.json` holds a permission allowlist for the usual dotnet/git commands. Upstream's
 `.gitignore` excludes `.claude/`, so it is **local-only and not in the repo** — recreate it by hand
@@ -272,7 +319,7 @@ SDK-resolution error instead of a confusing pile of compile errors.
 | `src/libuilogic` | `LibUiLogic` | UI-agnostic logic |
 | `src/ui` | `UI` | Avalonia desktop app → `SubtitleEdit.exe` |
 | `src/seconv` | `SeConv` | `seconv` CLI converter |
-| `tests/{libse,libuilogic,seconv,UI}` | xUnit | 1,938 tests |
+| `tests/{libse,libuilogic,seconv,UI}` | xUnit | 1,943 tests |
 
 `tests/benchmarks/UiBenchmarks.csproj` exists but is **not** in `SubtitleEdit.sln`, so
 solution-wide build/test commands skip it. Build it explicitly if you need it.
@@ -305,7 +352,7 @@ parsed out of `src/ui/Logic/Config/Se.cs` — that file is the single source of 
 the app version, and both CI and `build.ps1` read it with the same regex.
 
 **Baseline (verified 2026-07-27, on `e5cc40b3e` / rc17):** clean `Release` build with
-**0 warnings, 0 errors** (~74s cold, ~4s incremental); `1937 passed / 1 failed` (see
+**0 warnings, 0 errors** (~74s cold, ~4s incremental); `1942 passed / 1 failed` (see
 below); `publish win-x64 --self-contained` produces a 138 MB single-file
 `SubtitleEdit.exe` (263 MB with libmpv and the native Skia/HarfBuzz DLLs alongside).
 Fork CI reproduced the same counts on `windows-latest`, and `ubuntu-latest` built clean.
