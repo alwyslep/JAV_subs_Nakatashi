@@ -2,7 +2,7 @@
 
 Set a minimum time gap between consecutive subtitles.
 
-- **Menu:** Tools → Apply min. gap between subtitles...
+- **Menu:** Synchronization → Apply min. gap between subtitles...
 
 <!-- Screenshot: Apply minimum gap window -->
 ![Apply Minimum Gap](../screenshots/apply-min-gap.png)

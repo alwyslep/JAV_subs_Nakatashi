@@ -2,7 +2,7 @@
 
 Create an empty translation from the current subtitle.
 
-- **Menu:** Tools → Make new empty translation from current subtitle
+- **Menu:** Translate → Make new empty translation from current subtitle
 - **Shortcut:** Configurable
 
 ## What It Does
@@ -19,7 +19,7 @@ Timing, line order, and formatting metadata are preserved.
 ## How to Use
 
 1. Open the source subtitle.
-2. Select **Tools → Make new empty translation from current subtitle**.
+2. Select **Translate → Make new empty translation from current subtitle**.
 3. Translate each line in the empty text column.
 4. Save the result as a new subtitle file.
 

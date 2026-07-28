@@ -2,7 +2,7 @@
 
 Manage custom word lists used by spell check and OCR error fixing.
 
-- **Menu:** Options → Word lists...
+- **Menu:** Spell check → Word lists...
 - **Shortcut:** Configurable
 
 <!-- Screenshot: Word lists window -->
@@ -10,7 +10,7 @@ Manage custom word lists used by spell check and OCR error fixing.
 
 ## How to Use
 
-1. Open **Options → Word lists...**
+1. Open **Spell check → Word lists...**
 2. Select a language from the dropdown
 3. Manage entries in the three word list categories
 4. Changes are saved automatically when entries are added or removed

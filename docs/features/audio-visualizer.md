@@ -67,7 +67,7 @@ The waveform toolbar (when visible) provides buttons for:
 - Navigate to previous/next shot change
 - Apply common subtitle timing actions
 
-The toolbar can be toggled from **Video → More → Toggle waveform toolbar**. Subtitle Edit 5 also supports waveform toolbar customization, including button visibility/order and import/export of toolbar settings.
+The toolbar can be toggled from **Video → Toggle waveform toolbar**. Subtitle Edit 5 also supports waveform toolbar customization, including button visibility/order and import/export of toolbar settings.
 
 ## Waveform Themes
 

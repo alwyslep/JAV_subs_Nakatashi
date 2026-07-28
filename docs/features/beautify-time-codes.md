@@ -2,7 +2,7 @@
 
 Snap subtitle in- and out-cues to shot changes, frame boundaries, and minimum-gap / duration rules in one pass, using a fully configurable profile.
 
-- **Menu:** Tools → Beautify time codes…
+- **Menu:** Synchronization → Beautify time codes…
 - **Profile editor:** Options → Settings → Waveform → gear icon next to *Snap to shot changes*, or *Edit beautify time codes profile…* button inside the tool window.
 
 <!-- Screenshot: Beautify time codes window with Original/Beautified visualizers -->
