@@ -2,7 +2,7 @@
 
 Extend subtitle durations to fill gaps between consecutive subtitles.
 
-- **Menu:** Tools → Bridge gaps...
+- **Menu:** Synchronization → Bridge gaps...
 
 <!-- Screenshot: Bridge gaps window -->
 ![Bridge Gaps](../screenshots/bridge-gaps.png)

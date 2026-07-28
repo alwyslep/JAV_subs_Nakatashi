@@ -44,7 +44,7 @@ Subtitle Edit 5 is the Avalonia-based, cross-platform version of Subtitle Edit. 
 
 ## Beautify Time Codes
 
-- New **Tools → Beautify time codes…** brings the SE 4 beautifier across, but as a live tool: two stacked waveform visualizers (original / beautified) show the result before you accept it, with prev/next navigation, frame and millisecond deltas, and a per-cue reason line (*snapped to shot change* · *min. gap enforced* · *min. duration enforced*, etc.).
+- New **Synchronization → Beautify time codes…** brings the SE 4 beautifier across, but as a live tool: two stacked waveform visualizers (original / beautified) show the result before you accept it, with prev/next navigation, frame and millisecond deltas, and a per-cue reason line (*snapped to shot change* · *min. gap enforced* · *min. duration enforced*, etc.).
 - The full **profile editor** (zones, chaining, connected-subtitle handling, per-cue gap, presets for Netflix and SDI) is available from the tool window and from Options → Settings → Waveform. Profile edits persist into `Settings.json`.
 
 ## Speech to Text

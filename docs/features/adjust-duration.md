@@ -2,7 +2,7 @@
 
 Adjust the display duration of subtitle lines.
 
-- **Menu:** Tools → Adjust durations...
+- **Menu:** Synchronization → Adjust durations...
 
 <!-- Screenshot: Adjust duration window -->
 ![Adjust Duration](../screenshots/adjust-duration.png)

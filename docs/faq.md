@@ -51,7 +51,7 @@ Subtitle Edit supports:
 
 Configure the video player in **Options → Settings → Video Player**.
 
-If you have problems with a video, try **Video → More → Re-encode video for better subtitling**.
+If you have problems with a video, try **Video → Re-encode video for better subtitling**.
 
 ### How do I generate a waveform?
 Open a video file, and Subtitle Edit will generate a waveform automatically if FFmpeg is installed.
@@ -131,7 +131,7 @@ Use **Synchronization → Change frame rate...** and select the source and targe
 Go to **Spell check → Get dictionaries...** and download the dictionary for your language. Dictionaries are based on Hunspell/OpenOffice format.
 
 ### How do I add words to the dictionary?
-During spell check, click **Add to dictionary** to add a word. You can also manage custom words in **Options → Word lists**.
+During spell check, click **Add to dictionary** to add a word. You can also manage custom words in **Spell check → Word lists**.
 
 ---
 
@@ -160,7 +160,7 @@ See the [Keyboard Shortcuts Reference](reference/keyboard-shortcuts.md) for the 
 ### Subtitle Edit won't play video
 - Ensure you have a video player installed (libmpv or VLC)
 - Check that the video player path is correctly set in **Options → Settings → Video Player**
-- Try to re-encode the video for better compatibility via **Video → More → Re-encode video for better subtitling**
+- Try to re-encode the video for better compatibility via **Video → Re-encode video for better subtitling**
 
 ### Waveform is not showing
 - Ensure FFmpeg is installed and the path is set in settings

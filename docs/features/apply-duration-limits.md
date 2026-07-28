@@ -2,7 +2,7 @@
 
 Enforce minimum and maximum duration limits on subtitle lines.
 
-- **Menu:** Tools → Apply duration limits...
+- **Menu:** Synchronization → Apply duration limits...
 
 <!-- Screenshot: Apply duration limits window -->
 ![Apply Duration Limits](../screenshots/apply-duration-limits.png)
