@@ -36,6 +36,7 @@ using Nikse.SubtitleEdit.Features.Shared.TextBoxUtils;
 using Nikse.SubtitleEdit.Features.SpellCheck;
 using Nikse.SubtitleEdit.Features.SpellCheck.GetDictionaries;
 using Nikse.SubtitleEdit.Features.Translate;
+using Nikse.SubtitleEdit.Logic.Theming.Nakatashi;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.Dictionaries;
@@ -261,9 +262,12 @@ public partial class OcrViewModel : ObservableObject
         _nOcrAddHistoryManager = new NOcrAddHistoryManager();
         _binaryOcrAddHistoryManager = new BinaryOcrAddHistoryManager();
         _cancellationTokenSource = new CancellationTokenSource();
-        TextBoxFontFamily = !string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
-            ? new FontFamily(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
-            : FontFamily.Default;
+        // Fork (Nakatashi): this one is an unconditional assignment onto a bound property, so
+        // skipping the pin is not enough - the else-branch is a hard FontFamily.Default and the
+        // OCR text box would still render the OS face. SubtitleSurfaceFont hands it the chain,
+        // and returns upstream's exact value whenever Nakatashi does not own the surface.
+        TextBoxFontFamily = NakatashiTheme.SubtitleSurfaceFont(
+            Se.Settings.Appearance.SubtitleTextBoxAndGridFontName);
         TextBoxFontSize = (decimal)Se.Settings.Appearance.SubtitleTextBoxFontSize;
         TextBoxFontWeight = Se.Settings.Appearance.SubtitleTextBoxFontBold ? FontWeight.Bold : FontWeight.Regular;
         UnknownWordsRemoveCurrentText = string.Empty;

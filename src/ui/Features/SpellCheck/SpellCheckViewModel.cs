@@ -17,6 +17,7 @@ using Nikse.SubtitleEdit.Features.Main;
 using Nikse.SubtitleEdit.Features.Shared;
 using Nikse.SubtitleEdit.Features.SpellCheck.EditWholeText;
 using Nikse.SubtitleEdit.Features.SpellCheck.GetDictionaries;
+using Nikse.SubtitleEdit.Logic.Theming.Nakatashi;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.Media;
@@ -1060,6 +1061,14 @@ public partial class SpellCheckViewModel : ObservableObject, IClosingCleanup
     {
         var textBlock = new TextBlock();
         var fontName = Se.Settings.Appearance.SubtitleTextBoxAndGridFontName;
+        // Fork (Nakatashi): clear the name once instead of guarding each of the four pins below -
+        // every one of them is gated on !IsNullOrEmpty, so emptying it here skips them all and
+        // lets the typography chain reach the TextBlock (the Runs inherit from it).
+        if (NakatashiTheme.OwnsSubtitleFont(fontName))
+        {
+            fontName = string.Empty;
+        }
+
         if (!string.IsNullOrEmpty(fontName))
         {
             textBlock.FontFamily = new FontFamily(fontName);

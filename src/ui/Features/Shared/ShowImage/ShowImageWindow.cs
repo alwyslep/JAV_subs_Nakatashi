@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Data;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Nikse.SubtitleEdit.Logic.Theming.Nakatashi;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 
@@ -52,7 +53,10 @@ public class ShowImageWindow : Window
 
 
         var label = UiUtil.MakeLabel().WithBindText(vm, nameof(vm.Text)).WithFontSize(30).WithMarginTop(20).WithAlignmentCenter();
-        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
+        // Fork (Nakatashi): skip the local pin while the typography chain owns this surface
+        // (see NakatashiTheme.OwnsSubtitleFont) - a local value always beats app-level styles.
+        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
+            && !NakatashiTheme.OwnsSubtitleFont(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
         {
             label.FontFamily = new FontFamily(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName);
         }

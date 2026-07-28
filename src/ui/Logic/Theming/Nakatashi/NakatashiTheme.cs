@@ -83,6 +83,26 @@ public static class NakatashiTheme
     }
 
     /// <summary>
+    /// The subtitle-surface font for the few sites that assign a FontFamily <em>unconditionally</em>
+    /// (a ternary onto a bound property, say). Those cannot be fixed by skipping the pin the way
+    /// the <see cref="OwnsSubtitleFont"/> guard does elsewhere: their else-branch is a hard
+    /// <c>FontFamily.Default</c>, so the surface would still render the OS face. They need the
+    /// chain handed to them. Returns exactly what upstream would have used whenever Nakatashi
+    /// does not own the surface.
+    /// </summary>
+    public static FontFamily SubtitleSurfaceFont(string? subtitleFontName)
+    {
+        if (OwnsSubtitleFont(subtitleFontName))
+        {
+            return new FontFamily(UiFontChain);
+        }
+
+        return string.IsNullOrEmpty(subtitleFontName)
+            ? FontFamily.Default
+            : new FontFamily(subtitleFontName);
+    }
+
+    /// <summary>
     /// Set while a Nakatashi theme is active: UiUtil.GetFocusedButtonBackgroundBrush returns
     /// this instead of the user's translucent-blue fill, so every dialog's focused button
     /// speaks the theme's accent-gradient language. Null while any other theme is active.

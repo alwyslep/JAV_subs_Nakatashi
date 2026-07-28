@@ -7,6 +7,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Threading;
 using Avalonia.Media;
+using Nikse.SubtitleEdit.Logic.Theming.Nakatashi;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.ValueConverters;
@@ -201,7 +202,10 @@ public class ConvertActorsWindow : Window
                             TextWrapping = TextWrapping.NoWrap,
                             [!TextBlock.InlinesProperty] = new Binding(nameof(ConvertActorsDisplayItem.Text)) { Converter = colorConverter, Mode = BindingMode.OneWay },
                         };
-                        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
+                        // Fork (Nakatashi): skip the local pin while the typography chain owns this surface
+                        // (see NakatashiTheme.OwnsSubtitleFont) - a local value always beats app-level styles.
+                        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
+                            && !NakatashiTheme.OwnsSubtitleFont(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
                         {
                             textBlock.FontFamily = new FontFamily(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName);
                         }
@@ -224,7 +228,10 @@ public class ConvertActorsWindow : Window
                             TextWrapping = TextWrapping.NoWrap,
                             [!TextBlock.InlinesProperty] = new Binding(nameof(ConvertActorsDisplayItem.NewText)) { Converter = colorConverter, Mode = BindingMode.OneWay },
                         };
-                        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
+                        // Fork (Nakatashi): skip the local pin while the typography chain owns this surface
+                        // (see NakatashiTheme.OwnsSubtitleFont) - a local value always beats app-level styles.
+                        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
+                            && !NakatashiTheme.OwnsSubtitleFont(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
                         {
                             textBlock.FontFamily = new FontFamily(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName);
                         }

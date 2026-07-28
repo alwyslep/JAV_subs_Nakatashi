@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Media;
+using Nikse.SubtitleEdit.Logic.Theming.Nakatashi;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.UiLogic.Ocr.FixEngine;
@@ -16,7 +17,10 @@ public static class OcrFixLineResultExtensions
     public static TextBlock GetFormattedText(this OcrFixLineResult result, IBrush? errorBrush = null, IBrush? normalBrush = null)
     {
         var textBlock = new TextBlock();
-        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
+        // Fork (Nakatashi): skip the local pin while the typography chain owns this surface
+        // (see NakatashiTheme.OwnsSubtitleFont) - a local value always beats app-level styles.
+        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
+            && !NakatashiTheme.OwnsSubtitleFont(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
         {
             textBlock.FontFamily = new FontFamily(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName);
         }
@@ -36,7 +40,10 @@ public static class OcrFixLineResultExtensions
                 if (word.IsSpellCheckedOk == null)
                 {
                     var run = new Run(displayText);
-                    if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
+                    // Fork (Nakatashi): skip the local pin while the typography chain owns this surface
+                    // (see NakatashiTheme.OwnsSubtitleFont) - a local value always beats app-level styles.
+                    if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
+                        && !NakatashiTheme.OwnsSubtitleFont(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
                     {
                         run.FontFamily = new FontFamily(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName);
                     }
@@ -48,7 +55,10 @@ public static class OcrFixLineResultExtensions
                     {
                         Foreground = (bool)word.IsSpellCheckedOk ? normalColor : errorColor
                     };
-                    if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
+                    // Fork (Nakatashi): skip the local pin while the typography chain owns this surface
+                    // (see NakatashiTheme.OwnsSubtitleFont) - a local value always beats app-level styles.
+                    if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
+                        && !NakatashiTheme.OwnsSubtitleFont(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
                     {
                         run.FontFamily = new FontFamily(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName);
                     }

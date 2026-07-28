@@ -10,6 +10,7 @@ using Nikse.SubtitleEdit.Controls.AudioVisualizerControl;
 using Nikse.SubtitleEdit.Features.Main.Layout;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.ElevenLabsSettings;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Engines;
+using Nikse.SubtitleEdit.Logic.Theming.Nakatashi;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.ValueConverters;
@@ -241,7 +242,10 @@ public class ReviewSpeechWindow : Window
             FontWeight = Se.Settings.Appearance.SubtitleTextBoxFontBold ? FontWeight.Bold : FontWeight.Normal,
             Margin = new Thickness(0, 0, 0, 3),
         };
-        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
+        // Fork (Nakatashi): skip the local pin while the typography chain owns this surface
+        // (see NakatashiTheme.OwnsSubtitleFont) - a local value always beats app-level styles.
+        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
+            && !NakatashiTheme.OwnsSubtitleFont(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
         {
             textBox.FontFamily = new FontFamily(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName);
         }

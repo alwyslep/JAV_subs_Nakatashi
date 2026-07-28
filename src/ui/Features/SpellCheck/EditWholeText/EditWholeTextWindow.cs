@@ -4,6 +4,7 @@ using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Nikse.SubtitleEdit.Logic.Theming.Nakatashi;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 
@@ -37,7 +38,10 @@ public class EditWholeTextWindow : Window
             Width = 400,
             Height = 100,
         };
-        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
+        // Fork (Nakatashi): skip the local pin while the typography chain owns this surface
+        // (see NakatashiTheme.OwnsSubtitleFont) - a local value always beats app-level styles.
+        if (!string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
+            && !NakatashiTheme.OwnsSubtitleFont(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName))
         {
             textBoxWholeText.FontFamily = new FontFamily(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName);
         }
