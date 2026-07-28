@@ -87,7 +87,18 @@ public class TranslateSettingsWindow : Window
 
         var buttonOk = UiUtil.MakeButtonOk(vm.OkCommand);
         var buttonCancel = UiUtil.MakeButtonCancel(vm.CancelCommand);
-        var buttonBar = UiUtil.MakeButtonBar(buttonOk, buttonCancel);
+
+        // Fork: same "reset to default" escape hatch the AI review prompt editor has. Shown only
+        // when there is a prompt to reset. The label reuses Tools.AiReview.ResetToDefault, which
+        // is filled in all 32 language files, so no translation file is touched.
+        var buttonReset = UiUtil.MakeButton(Se.Language.Tools.AiReview.ResetToDefault, vm.ResetToDefaultCommand)
+            .BindIsVisible(vm, nameof(vm.PromptIsVisible));
+        var buttonBar = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+        };
+        buttonBar.Add(buttonReset, 0, 0);
+        buttonBar.Add(UiUtil.MakeButtonBar(buttonOk, buttonCancel), 0, 2);
 
         var grid = new Grid
         {
