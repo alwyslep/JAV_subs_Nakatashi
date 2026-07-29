@@ -154,7 +154,50 @@ public partial class MediaInfoViewViewModel : ObservableObject
             trackNo++;
         }
 
+        // Fork addition: the container's own metadata. This window reported everything about a
+        // file except what it says about itself, so a tagged library was invisible here.
+        AppendTags(sb, VideoTagInfo.Read(videoFileName));
+
         return sb.ToString().Trim();
+    }
+
+    /// <summary>
+    /// Fork addition - see <see cref="VideoTagInfo"/>. Prints only the fields the file actually
+    /// carries, so an untagged video looks exactly as it did before.
+    /// </summary>
+    private static void AppendTags(StringBuilder sb, VideoTagInfo tags)
+    {
+        if (tags.IsEmpty)
+        {
+            return;
+        }
+
+        sb.AppendLine("Metadata:");
+        AppendTag(sb, "Title", tags.Title);
+        AppendTag(sb, "Title (original)", tags.TitleOriginal);
+        AppendTag(sb, "Performers", string.Join(", ", tags.Performers));
+        AppendTag(sb, "Album", tags.Album);
+        AppendTag(sb, "Label", tags.AlbumArtist);
+        AppendTag(sb, "Director", tags.Director);
+        AppendTag(sb, "Genres", string.Join(", ", tags.Genres));
+        AppendTag(sb, "Date", tags.Date);
+        AppendTag(sb, "Copyright", tags.Copyright);
+        AppendTag(sb, "Url", tags.Url);
+        AppendTag(sb, "Tagged by", tags.Encoder);
+        AppendTag(sb, "Cover art", tags.HasCoverArt ? "yes" : string.Empty);
+        AppendTag(sb, "Comment", tags.Comment);
+        AppendTag(sb, "Description", tags.Description);
+    }
+
+    private static void AppendTag(StringBuilder sb, string label, string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        // A synopsis carries hard line breaks; indent the continuations so the key/value shape holds.
+        sb.AppendLine($" - {label}: {value.Replace("\r", string.Empty).Replace("\n", "\n     ")}");
     }
 
     private TextEditorWrapper CreateAdvancedTextBoxWrapper(string text)
