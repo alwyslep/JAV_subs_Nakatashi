@@ -54,6 +54,10 @@ public partial class AiAssistantViewModel : ObservableObject
 
     public Window? Window { get; set; }
     public bool ApplyPressed { get; private set; }
+
+    // Nakatashi: 화계 맞추기로 넘어가 달라는 요청. 이 창은 결과가 문자열 하나라 여러 줄
+    // 제안 목록을 담을 수 없어서, 여기서는 닫히기만 하고 MainViewModel 이 그 창을 연다.
+    public bool SpeechRegisterRequested { get; private set; }
     public string ResultToApply { get; private set; } = string.Empty;
 
     private readonly IWindowService _windowService;
@@ -473,6 +477,16 @@ public partial class AiAssistantViewModel : ObservableObject
         SaveSettings();
         ResultToApply = ResultText.Trim();
         ApplyPressed = true;
+        Window?.Close();
+    }
+
+    // Nakatashi: 다섯 번째 버튼. 화계는 파일 전체에 걸친 성질이라 한 줄 흐름으로는 못 다룬다.
+    [RelayCommand]
+    private void OpenSpeechRegister()
+    {
+        SaveSettings();
+        _cancellationTokenSource?.Cancel();
+        SpeechRegisterRequested = true;
         Window?.Close();
     }
 

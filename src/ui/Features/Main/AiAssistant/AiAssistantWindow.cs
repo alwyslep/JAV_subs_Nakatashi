@@ -146,6 +146,11 @@ public class AiAssistantWindow : Window
         actionPanel.Children.Add(MakeActionButton(vm, l.FitReadingSpeed, vm.FitReadingSpeedCommand, "mdi-play-speed"));
         actionPanel.Children.Add(MakeActionButton(vm, l.MakeFormal, vm.MakeFormalCommand, "mdi-account-tie"));
         actionPanel.Children.Add(MakeActionButton(vm, l.MakeInformal, vm.MakeInformalCommand, "mdi-emoticon-happy-outline"));
+        // Nakatashi: 다섯 번째 — 화계 맞추기. 위 네 개와 달리 이 창에서 실행되지 않고 창을
+        // 닫으며 전용 창을 연다. 여러 줄을 다루고 결과가 줄별 수락/거부 목록이라, 결과가
+        // 문자열 하나인 이 창에는 담기지 않는다.
+        actionPanel.Children.Add(MakeActionButton(vm,
+            Se.Language.Tools.SpeechRegister.MenuItem, vm.OpenSpeechRegisterCommand, "mdi-account-voice"));
 
         var questionBox = new TextBox
         {

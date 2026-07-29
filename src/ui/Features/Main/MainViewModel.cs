@@ -5584,6 +5584,13 @@ public partial class MainViewModel :
             current.Text = result.ResultToApply;
             SelectAndScrollToRow(index);
         }
+        else if (result.SpeechRegisterRequested)
+        {
+            // Nakatashi: 도우미의 다섯 번째 버튼. 도우미가 닫힌 **뒤에** 연다 — 모달 위에
+            // 모달을 겹치지 않기 위해서다. 그리드 선택은 도우미를 여는 동안 그대로이므로
+            // 화계 창은 사용자가 고른 줄들을 그대로 받는다.
+            await ShowSpeechRegister();
+        }
     }
 
     private static string? TwoLetterCodeToLanguageName(string? twoLetterCode)
