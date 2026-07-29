@@ -23,8 +23,17 @@ public class SeNameCheck
         "\"사사키상\" as the same name spelled two ways.\n" +
         "- Two names that merely look similar are not the same person. 유리 and 유노 are different " +
         "people unless the dialogue shows otherwise; do not merge them to tidy the list.\n" +
+        "- A SHORTER OR MORE FAMILIAR FORM IS NOT A MISSPELLING. Calling 사카미치 미루 \"미루\", " +
+        "\"미루짱\" or \"미루 씨\" is how people talk, and which form is used says who is speaking " +
+        "and how close they are - replacing them all with the full name destroys that. Report a " +
+        "spelling only when it is WRONG, never when it is merely shorter, more casual, or carries " +
+        "a different honorific.\n" +
         "- Ordinary words are not names. 어머니, 아저씨, 선생님 on their own are how people are " +
         "addressed, not who they are - report them only when attached to a name.\n" +
+        "- \"ko\" REPLACES \"wrong\" WORD FOR WORD, so it must be the same form of address with only " +
+        "the error corrected - keep the honorific and keep the length. If \"미르짱\" is wrong, \"ko\" " +
+        "is \"미루짱\"; it is NOT \"미루\", and it is NOT the full name \"사카미치 미루\". Substituting a " +
+        "different form leaves broken grammar in the line.\n" +
         "- Prefer the spelling the film already uses most, unless it is a meaning-translation.\n" +
         "- When in doubt, leave it out. A wrong merge renames a character for the whole file.";
 

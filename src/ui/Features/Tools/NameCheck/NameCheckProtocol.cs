@@ -70,16 +70,29 @@ public static class NameCheckProtocol
     }
 
     /// <summary>
-    /// The dialogue, one line per line. ★Plain text, not the numbered JSON the other passes send:
-    /// the model is not being asked to point at lines, so numbering would only cost tokens.
+    /// The dialogue, one line per line, each distinct line once.
+    ///
+    /// ★Plain text, not the numbered JSON the other passes send: the model is not being asked to
+    ///   point at lines, so numbering would only cost tokens.
+    ///
+    /// ★Repeats are dropped, and that is not a size trick - it is what this pass is looking at.
+    ///   The question here is which spellings the file contains, so a line that appears twenty
+    ///   times answers it exactly as well the first time. Measured on a 6,582-line subtitle: the
+    ///   text hit the cap at line ~3,000 and everything after it was never examined, so a name
+    ///   introduced late could not be found at all. Deduplicating removes that blind spot and
+    ///   costs less rather than more.
+    ///
+    /// ★First-occurrence order is kept. The model still needs to see who is talking to whom to
+    ///   decide whether two spellings are one person, and shuffling the file would take that away.
     /// </summary>
     public static string BuildUserContent(Subtitle subtitle)
     {
         var sb = new StringBuilder();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var paragraph in subtitle.Paragraphs)
         {
             var text = (paragraph.Text ?? string.Empty).Replace(Environment.NewLine, " ").Trim();
-            if (text.Length == 0)
+            if (text.Length == 0 || !seen.Add(text))
             {
                 continue;
             }
@@ -137,7 +150,17 @@ public static class NameCheckProtocol
                     // ★Dropping the chosen spelling out of its own "wrong" list is not pedantry:
                     //   left in, the replacement is a no-op that still shows as a suggestion, and the
                     //   user is asked to approve a change that changes nothing.
-                    if (value.Length > 0 && !string.Equals(value, korean, StringComparison.Ordinal) &&
+                    //
+                    // ★And dropping anything CONTAINED IN the chosen spelling is what stops the text
+                    //   being destroyed. Measured: the model proposed 사카미치 미루 as canonical with
+                    //   사카미치 and 미루 among the wrong spellings. Replacing a string with something
+                    //   that contains it feeds itself - one line came back as
+                    //   "사카미치 사카미치 미루 사카미치 미루". It is also never a real finding: a
+                    //   shorter form of the same name is an abbreviation, not a misspelling.
+                    if (value.Length > 0 &&
+                        !string.Equals(value, korean, StringComparison.Ordinal) &&
+                        !korean.Contains(value, StringComparison.Ordinal) &&
+                        KeepsFormOfAddress(value, korean) &&
                         !wrong.Contains(value))
                     {
                         wrong.Add(value);
@@ -226,6 +249,51 @@ public static class NameCheckProtocol
         }
 
         return true;
+    }
+
+    private static readonly string[] Honorifics = ["선생님", "짱", "씨", "군", "님", "상"];
+
+    /// <summary>
+    /// True when the replacement is the same form of address with only the error corrected.
+    ///
+    /// ★The substitution is word for word, so the form has to survive it. Measured: the model
+    ///   answered 미르짱 -&gt; 사카미치 미루, and the lines came back "사카미치 미루이 그런 일은",
+    ///   "사카미치 미루은, 반드시" - a full name dropped into a slot a nickname was holding, leaving
+    ///   the particle attached to the wrong ending. Swapping 씨 for 군 fails here too, and rightly:
+    ///   which honorific a speaker uses is the relationship, not a typo.
+    /// </summary>
+    internal static bool KeepsFormOfAddress(string wrong, string korean)
+    {
+        var wrongHonorific = TrailingHonorific(wrong);
+        if (wrongHonorific.Length == 0)
+        {
+            // No honorific to preserve - only guard against a wholesale rewrite.
+            return TrailingHonorific(korean).Length == 0;
+        }
+
+        if (korean.EndsWith(wrongHonorific, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // ★One exception, and only one: 상 is not a Korean honorific at all - it is さん left
+        //   half-transliterated, and turning it into 씨 is the fix, not a change of relationship.
+        //   Between two real Korean honorifics there is no exception: which one a speaker uses
+        //   IS the relationship, so 군 -> 씨 is never a typo.
+        return wrongHonorific == "상" && korean.EndsWith("씨", StringComparison.Ordinal);
+    }
+
+    private static string TrailingHonorific(string value)
+    {
+        foreach (var honorific in Honorifics)
+        {
+            if (value.EndsWith(honorific, StringComparison.Ordinal))
+            {
+                return honorific;
+            }
+        }
+
+        return string.Empty;
     }
 
     private static string ReadString(JsonElement element, string name)

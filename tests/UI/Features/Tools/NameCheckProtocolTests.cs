@@ -46,6 +46,58 @@ public class NameCheckProtocolTests
         Assert.Equal(["사사끼 씨"], found[0].Wrong);
     }
 
+    // ★The measured failure this guard exists for: the model offered 사카미치 미루 as canonical with
+    //   사카미치 and 미루 among the wrong spellings. Replacing a string with something that contains
+    //   it feeds itself - one line came back "사카미치 사카미치 미루 사카미치 미루".
+    [Fact]
+    public void ParseNames_DropsSpellingsContainedInTheChosenOne()
+    {
+        // Every entry is rejected here: 사카미치 and 미루 are contained in the chosen name, and
+        // 미르짱 would lose its honorific to it - so the finding disappears rather than corrupting.
+        Assert.Empty(NameCheckProtocol.ParseNames(
+            """{"names":[{"src":"坂道みる","ko":"사카미치 미루","wrong":["사카미치","미루","미르짱"]}]}"""));
+
+        // With a like-for-like replacement the substring guard still does its job.
+        var found = NameCheckProtocol.ParseNames(
+            """{"names":[{"src":"坂道みる","ko":"미루짱","wrong":["미루","미르짱"]}]}""");
+        Assert.Equal(["미르짱"], found[0].Wrong);
+    }
+
+    [Fact]
+    public void ParseNames_DropsAFindingLeftWithNothingToReplace()
+    {
+        // Every "wrong" was an abbreviation of the chosen name - there is no misspelling here.
+        Assert.Empty(NameCheckProtocol.ParseNames(
+            """{"names":[{"ko":"사카미치 미루","wrong":["사카미치","미루"]}]}"""));
+    }
+
+    // ★The substitution is word for word, so the form of address has to survive it. Measured: the
+    //   model answered 미르짱 -> 사카미치 미루 and the lines came back "사카미치 미루이 그런 일은",
+    //   "사카미치 미루은, 반드시" - a full name in a slot a nickname was holding.
+    [Theory]
+    [InlineData("미르짱", "미루짱", true)]
+    [InlineData("미르짱", "사카미치 미루", false)]   // honorific dropped
+    [InlineData("사사키상", "사사키 씨", true)]       // 상 is さん half-transliterated - fixing it is the point
+    [InlineData("사미지마 군", "사미지마 씨", false)] // which honorific is the relationship, not a typo
+    [InlineData("사미지마 군", "사시지마 군", true)]
+    [InlineData("히라타", "히라따", true)]
+    [InlineData("히라타", "히라타 씨", false)]
+    public void KeepsFormOfAddress_RequiresALikeForLikeFix(string wrong, string korean, bool expected)
+    {
+        Assert.Equal(expected, NameCheckProtocol.KeepsFormOfAddress(wrong, korean));
+    }
+
+    [Fact]
+    public void ParseNames_DropsAReplacementThatChangesTheFormOfAddress()
+    {
+        Assert.Empty(NameCheckProtocol.ParseNames(
+            """{"names":[{"src":"坂道みる","ko":"사카미치 미루","wrong":["미르짱"]}]}"""));
+
+        var kept = NameCheckProtocol.ParseNames(
+            """{"names":[{"src":"坂道みる","ko":"미루짱","wrong":["미르짱"]}]}""");
+        Assert.Equal(["미르짱"], kept[0].Wrong);
+    }
+
     [Fact]
     public void ParseNames_SkipsEntriesThatCannotChangeAnything()
     {
@@ -132,8 +184,29 @@ public class NameCheckProtocolTests
 
         Assert.Equal("첫 줄\n둘째 줄\n", content);
 
-        var huge = Make(Enumerable.Repeat(new string('가', 500), 200).ToArray());
+        var huge = Make(Enumerable.Range(0, 400).Select(i => i + new string('가', 500)).ToArray());
         Assert.True(NameCheckProtocol.BuildUserContent(huge).Length <= NameCheckProtocol.MaxDialogueChars);
+    }
+
+    // ★A repeated line answers "which spellings are in this file" exactly as well the first time.
+    //   Measured on a 6,582-line subtitle the raw text hit the cap around line 3,000, so a name
+    //   introduced after that could not be found at all.
+    [Fact]
+    public void BuildUserContent_SendsEachDistinctLineOnce()
+    {
+        var content = NameCheckProtocol.BuildUserContent(
+            Make("미루짱", "응", "미루짱", "응", "미루짱", "다른 줄"));
+
+        Assert.Equal("미루짱\n응\n다른 줄\n", content);
+    }
+
+    [Fact]
+    public void BuildUserContent_KeepsFirstOccurrenceOrder()
+    {
+        // The model still has to see who is talking to whom; shuffling would take that away.
+        var content = NameCheckProtocol.BuildUserContent(Make("가", "나", "가", "다"));
+
+        Assert.Equal("가\n나\n다\n", content);
     }
 
     // ★The transliteration rule is the one rule of this pass; a prompt edit that dropped it would
