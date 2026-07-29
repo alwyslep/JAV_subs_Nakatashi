@@ -1,7 +1,7 @@
 # JAV_subs_Nakatashi
 
 Fork of [SubtitleEdit/subtitleedit](https://github.com/SubtitleEdit/subtitleedit) (MIT),
-currently rebased onto upstream `e5cc40b3e` (**v5.1.0-rc17**). Only the **repository** was
+currently rebased onto upstream `93f828633` (**v5.1.0-rc18**). Only the **repository** was
 renamed — the solution, assemblies, and namespaces are deliberately unchanged (see
 *Fork policy*).
 
@@ -319,7 +319,7 @@ SDK-resolution error instead of a confusing pile of compile errors.
 | `src/libuilogic` | `LibUiLogic` | UI-agnostic logic |
 | `src/ui` | `UI` | Avalonia desktop app → `SubtitleEdit.exe` |
 | `src/seconv` | `SeConv` | `seconv` CLI converter |
-| `tests/{libse,libuilogic,seconv,UI}` | xUnit | 1,943 tests |
+| `tests/{libse,libuilogic,seconv,UI}` | xUnit | 1,960 tests |
 
 `tests/benchmarks/UiBenchmarks.csproj` exists but is **not** in `SubtitleEdit.sln`, so
 solution-wide build/test commands skip it. Build it explicitly if you need it.
@@ -351,11 +351,36 @@ Publish output lands in `publish/<runtime>/` (gitignored). `publish` stamps the 
 parsed out of `src/ui/Logic/Config/Se.cs` — that file is the single source of truth for
 the app version, and both CI and `build.ps1` read it with the same regex.
 
-**Baseline (verified 2026-07-27, on `e5cc40b3e` / rc17):** clean `Release` build with
-**0 warnings, 0 errors** (~74s cold, ~4s incremental); `1942 passed / 1 failed` (see
-below); `publish win-x64 --self-contained` produces a 138 MB single-file
-`SubtitleEdit.exe` (263 MB with libmpv and the native Skia/HarfBuzz DLLs alongside).
-Fork CI reproduced the same counts on `windows-latest`, and `ubuntu-latest` built clean.
+**Baseline (verified 2026-07-29, on `93f828633` / rc18):** clean `Release` build with
+**0 warnings, 0 errors**; `1958 passed / 1 failed / 1 skipped` (see below);
+`publish win-x64 --self-contained` produces a 138 MB single-file `SubtitleEdit.exe`
+(263 MB with libmpv and the native Skia/HarfBuzz DLLs alongside; last measured on rc17).
+Fork CI reproduced the rc17 counts on `windows-latest`, and `ubuntu-latest` built clean.
+
+### Upstream sync rc17 → rc18 (2026-07-29)
+
+66 upstream commits, **0 conflicts**. The fork policy paid for itself: of our 67 touched
+files and upstream's 107, only **6 overlapped** — and all six auto-merged (largest was
+`OcrViewModel.cs`, upstream `+22/-11` against our `+7/-3`). **`InitMenu.cs`, the fork's
+deepest change, upstream never touched.**
+
+The menu inventory net stayed green, which is the load-bearing fact: 66 upstream commits
+added **no** new menu command and removed none of ours. That is the one thing a human
+cannot verify by looking.
+
+What the sync buys: upstream's `perf/span-and-alloc-hunt` (per-keystroke and per-tick work
+in the main window, per-word/per-line allocations in OCR and spell check, libse save and
+line-break hot paths) — i.e. the "performance" item this file lists as the next phase,
+already done upstream. Plus retry-with-backoff for Mistral/ChatGPT/Anthropic/Groq/OpenRouter.
+
+What it cost: upstream introduced **2 new build warnings** (CS0419, an ambiguous `cref` in
+`src/libse/Common/RegexUtils.cs` — a file the fork had never touched). Fixed here rather
+than reported, per *Fork policy*. That is a deliberate, small widening of the divergence:
+the "0 warnings" gate only means something if it is held, and a tree that carries warnings
+trains people to stop reading them.
+
+The pre-sync tip is tagged **`backup/pre-rc18-sync-20260729`** (`96d2d8901`) — a rebase
+rewrites every hash, so this is the only way back.
 
 ### Gotcha: publish dirties `packages.lock.json`
 
@@ -382,7 +407,7 @@ at the fork point:
 > decoded bitmap has no pixel in the .idx palette's pattern colour — the CLUT was not applied
 
 This is **pre-existing upstream**, not caused by the fork — it reproduces on an unmodified
-tree, survived the rc16 → rc17 bump unchanged, and also fails under
+tree, survived the rc16 → rc17 → rc18 bumps unchanged, and also fails under
 `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`, so it is not a locale artifact. It went
 unnoticed because upstream's release workflows have their test step commented out
 (`.github/workflows/build-ui.yml:320`), so nothing upstream ever runs it. The test arrived
