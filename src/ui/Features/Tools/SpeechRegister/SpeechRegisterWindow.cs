@@ -166,10 +166,22 @@ public class SpeechRegisterWindow : Window
             TextWrapping = TextWrapping.Wrap,
         };
 
+        // ★Where the note came from. The box is filled automatically now, and a filled box with no
+        //   provenance invites the user either to trust a guess or to distrust their own saved
+        //   notes - the line below is what tells those two apart.
+        var noteSource = new TextBlock
+        {
+            Opacity = 0.7,
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        noteSource.Bind(TextBlock.TextProperty, new Binding(nameof(vm.NoteSourceText)));
+        noteSource.BindIsVisible(vm, nameof(vm.IsNoteSourceVisible));
+
         var notePanel = new StackPanel
         {
             Spacing = 4,
-            Children = { UiUtil.MakeLabel(ls.RelationshipNote), textBoxNote, noteInfo },
+            Children = { UiUtil.MakeLabel(ls.RelationshipNote), textBoxNote, noteSource, noteInfo },
         };
 
         var settingsRow = new Grid

@@ -1,0 +1,205 @@
+using System;
+using System.Collections.Generic;
+
+namespace Nikse.SubtitleEdit.Logic.JavData;
+
+/// <summary>One glossary entry: how a name is written in the original, and how it is written in Korean.</summary>
+public sealed class JavTermPair
+{
+    public string Source { get; init; } = string.Empty;
+    public string Korean { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// Fork addition. Reads the shared glossary's <b>address forms</b> - the names characters are
+/// actually called by.
+///
+/// ★Measured before building this, and it changed the design. Performer names are almost never in
+///   the glossary (2 of 580 catalogue names matched) because the glossary is harvested from
+///   dialogue, and dialogue does not use a performer's legal name. What it does hold is how the
+///   characters address each other: 石上さとみ→이시가미 사토미, おしろさん→오시로 씨,
+///   鳥町君→토리마치 군. Looking up the cast list would have quietly returned nothing.
+///
+/// ★Address forms are the right thing for this fork to read anyway. Korean marks the relationship
+///   in the ending <b>and</b> in how you address someone, so 씨/군/님 is part of the speech level,
+///   not decoration - and keeping the spelling stable across a series is exactly what the glossary
+///   accumulates for.
+///
+/// ★Writing back pins the row. That column had to be added to the glossary first: the translator's
+///   curate pass orders by <c>curated</c> but does not exclude curated rows, so once its backlog
+///   drained it would re-review - and possibly demote - a spelling a human had chosen, and a
+///   reharvest would overwrite it outright. <c>pinned</c> now blocks both, on both sides.
+/// </summary>
+public static class JavTerms
+{
+    internal const string TableName = "terms";
+
+    /// <summary>Enough to steady the spellings without crowding out the rest of the prompt.</summary>
+    internal const int MaxAddressForms = 24;
+
+    /// <summary>
+    /// Address forms recorded for a series, most recently seen first. Empty when the glossary has
+    /// nothing for it - the common case for a series nobody has translated yet.
+    /// </summary>
+    public static IReadOnlyList<JavTermPair> AddressForms(string? seriesPrefix, int max = MaxAddressForms)
+    {
+        var prefix = (seriesPrefix ?? string.Empty).Trim();
+        if (prefix.Length == 0)
+        {
+            return Array.Empty<JavTermPair>();
+        }
+
+        using var connection = JavDb.OpenRead(JavDataPaths.TermsDb);
+        if (connection == null || !JavDb.HasTable(connection, TableName))
+        {
+            return Array.Empty<JavTermPair>();
+        }
+
+        try
+        {
+            using var command = connection.CreateCommand();
+            // quality='ok' skips what the curate pass demoted; anchor rows are prompt style
+            // examples rather than lookups and are excluded for the same reason the translator
+            // excludes them from its own seed.
+            command.CommandText =
+                "select src, ko from " + TableName +
+                " where series = $series and quality = 'ok' and anchor = 0 order by last_seen desc";
+            command.Parameters.AddWithValue("$series", prefix);
+
+            var found = new List<JavTermPair>();
+            using var reader = command.ExecuteReader();
+            while (reader.Read() && found.Count < max)
+            {
+                var source = JavDb.GetText(reader, 0).Trim();
+                var korean = JavDb.GetText(reader, 1).Trim();
+                if (IsAddressForm(source, korean))
+                {
+                    found.Add(new JavTermPair { Source = source, Korean = korean });
+                }
+            }
+
+            return found;
+        }
+        catch
+        {
+            return Array.Empty<JavTermPair>();
+        }
+    }
+
+    /// <summary>
+    /// Records the spelling a human chose for a name in this series, and pins it so neither the
+    /// translator's reharvest nor its curate pass can overwrite it.
+    ///
+    /// ★<paramref name="source"/> must be in the original script. A source that already contains
+    ///   Hangul went through the machine-translation pass, so it is not the original spelling of
+    ///   anything - pinning it would carve a mistranslation into the shared glossary, which is the
+    ///   exact failure this fork is trying to undo. Same gate as
+    ///   <c>termdb.pin_term()</c> and <c>meta._ja_performers()</c>.
+    /// </summary>
+    public static bool Pin(string? seriesPrefix, string? source, string? korean)
+    {
+        var prefix = (seriesPrefix ?? string.Empty).Trim();
+        var src = (source ?? string.Empty).Trim();
+        var ko = (korean ?? string.Empty).Trim();
+
+        if (prefix.Length == 0 || src.Length == 0 || ko.Length == 0 || ko.Length > 200)
+        {
+            return false;
+        }
+
+        foreach (var c in src)
+        {
+            if (c is >= '가' and <= '힣')
+            {
+                return false;
+            }
+        }
+
+        if (!JavDataPaths.CanWriteTermsDb)
+        {
+            return false;
+        }
+
+        using var connection = JavDb.OpenWrite(JavDataPaths.TermsDb);
+        if (connection == null)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                "insert into " + TableName + "(series, src, ko, pinned, quality, curated)" +
+                " values($series, $src, $ko, 1, 'ok', datetime('now'))" +
+                " on conflict(series, src) do update set" +
+                "  ko = excluded.ko, pinned = 1, quality = 'ok', curated = datetime('now')," +
+                "  last_seen = datetime('now')";
+            command.Parameters.AddWithValue("$series", prefix);
+            command.Parameters.AddWithValue("$src", src);
+            command.Parameters.AddWithValue("$ko", ko);
+            command.ExecuteNonQuery();
+            return true;
+        }
+        catch
+        {
+            // ★An older glossary has no pinned column. Refusing is right: writing without the pin
+            //   would leave the spelling to be overwritten later, which is worse than not saving.
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Whether an entry names a person being addressed.
+    ///
+    /// ★An honorific test, not a name test, and that is deliberate: the glossary is mostly ordinary
+    ///   dialogue ("일어나 봐", "팬티 벗어") and nothing distinguishes a proper noun in it. An
+    ///   honorific suffix does - 石上さとみ has none but 佐々木さん does, and the ones with a suffix
+    ///   are precisely the ones that carry a relationship. Measured over the glossary: 2,597 of
+    ///   18,173 usable entries qualify, spread over 156 series, with no Korean-polluted source among
+    ///   them - the filter turns out to select for quality as well.
+    ///
+    /// ★The length floors are not padding. Without them the bare honorifics match themselves
+    ///   (君→너, 王様→왕님) and the Korean 상 matches any word ending in it (変→이상).
+    /// </summary>
+    internal static bool IsAddressForm(string source, string korean)
+    {
+        if (source.Length < 3 || korean.Length < 3)
+        {
+            return false;
+        }
+
+        // A source that already went through a machine translation is not a spelling to copy -
+        // this is the same gate SpeakerContext applies to cast names.
+        foreach (var c in source)
+        {
+            if (c is >= '가' and <= '힣')
+            {
+                return false;
+            }
+        }
+
+        return EndsWithAny(source, JapaneseHonorifics) || EndsWithAny(korean, KoreanHonorifics);
+    }
+
+    private static readonly string[] JapaneseHonorifics =
+        ["さん", "ちゃん", "君", "くん", "様", "先生", "サン", "チャン", "セン"];
+
+    // ★No 상: it is a suffix of ordinary words (이상, 정상, 사상), and the Japanese side already
+    //   catches the さん it would have covered.
+    private static readonly string[] KoreanHonorifics =
+        ["씨", "짱", "군", "님", "선생님"];
+
+    private static bool EndsWithAny(string value, string[] suffixes)
+    {
+        foreach (var suffix in suffixes)
+        {
+            if (value.EndsWith(suffix, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}

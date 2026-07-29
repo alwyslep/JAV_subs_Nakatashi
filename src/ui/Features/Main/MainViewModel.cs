@@ -5499,8 +5499,10 @@ public partial class MainViewModel :
             : new List<int> { SelectedSubtitleIndex ?? 0 };
 
         var idx = SelectedSubtitleIndex ?? 0;
+        // 영상 경로를 넘기는 이유: 화계는 작품별 관계 정보가 있어야 판정되는데, 그 정보가
+        // 남아 있는 곳이 영상 파일(원어 줄거리·장르)과 그것으로 찾아가는 공용 DB뿐이다.
         var viewModel = await ShowDialogAsync<Features.Tools.SpeechRegister.SpeechRegisterWindow,
-            Features.Tools.SpeechRegister.SpeechRegisterViewModel>(vm => vm.Initialize(GetUpdateSubtitle(), indices));
+            Features.Tools.SpeechRegister.SpeechRegisterViewModel>(vm => vm.Initialize(GetUpdateSubtitle(), indices, _videoFileName));
 
         if (viewModel.OkPressed)
         {

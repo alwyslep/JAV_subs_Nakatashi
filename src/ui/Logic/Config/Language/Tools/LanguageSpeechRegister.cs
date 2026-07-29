@@ -18,6 +18,14 @@ public class LanguageSpeechRegister
     public string RelationshipNote { get; set; }
     public string RelationshipNoteWatermark { get; set; }
     public string RelationshipNoteInfo { get; set; }
+
+    /// <summary>Where the note above came from - the user has to know what they are correcting.</summary>
+    public string NoteSourceX { get; set; }
+
+    public string NoteSourceGuidebookPinned { get; set; }
+    public string NoteSourceGuidebook { get; set; }
+    public string NoteSourceVideoTags { get; set; }
+    public string NoteSourceCatalog { get; set; }
     public string Run { get; set; }
     public string SelectedLinesX { get; set; }
     public string WorkingLineXOfY { get; set; }
@@ -40,6 +48,11 @@ public class LanguageSpeechRegister
         RelationshipNoteInfo =
             "Write the direction and the level, one per line. A description like \"shy\" is not a speech " +
             "level and the model cannot act on it.";
+        NoteSourceX = "From: {0} - edit it and it is kept for this film";
+        NoteSourceGuidebookPinned = "your saved notes";
+        NoteSourceGuidebook = "the translator's guidebook";
+        NoteSourceVideoTags = "the video's own tags";
+        NoteSourceCatalog = "the shared catalogue";
         Run = "Match selected lines";
         SelectedLinesX = "{0} lines selected";
         WorkingLineXOfY = "Matching line {0} of {1}...";

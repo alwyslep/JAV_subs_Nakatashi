@@ -8,6 +8,7 @@ using Nikse.SubtitleEdit.Features.Tools.AiReview;
 using Nikse.SubtitleEdit.Features.Translate;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.JavData;
 using Nikse.SubtitleEdit.Logic.LlamaCpp;
 using Nikse.SubtitleEdit.UiLogic.LlamaCpp;
 using System;
@@ -52,6 +53,11 @@ public partial class SpeechRegisterViewModel : ObservableObject
     [ObservableProperty] private string _selectedLevel;
     [ObservableProperty] private string _relationshipNote;
 
+    /// <summary>Where the note came from, already formatted. Empty when nothing was found.</summary>
+    [ObservableProperty] private string _noteSourceText;
+
+    [ObservableProperty] private bool _isNoteSourceVisible;
+
     [ObservableProperty] private ObservableCollection<ReviewSuggestionItem> _suggestions;
     [ObservableProperty] private ReviewSuggestionItem? _selectedSuggestion;
     [ObservableProperty] private bool _isRunning;
@@ -76,6 +82,12 @@ public partial class SpeechRegisterViewModel : ObservableObject
     private CancellationTokenSource _cancellationTokenSource = new();
     private bool _syncingSelection;
 
+    /// <summary>Release code of the film being edited; empty when it could not be identified.</summary>
+    private string _workCode = string.Empty;
+
+    /// <summary>What <see cref="LoadRelationshipNote"/> put in the box, to tell an edit from a no-op.</summary>
+    private string _noteAsLoaded = string.Empty;
+
     public SpeechRegisterViewModel(IWindowService windowService)
     {
         _windowService = windowService;
@@ -98,6 +110,7 @@ public partial class SpeechRegisterViewModel : ObservableObject
         RelationshipNote = Se.Settings.Tools.SpeechRegister.RelationshipNote;
 
         Suggestions = new ObservableCollection<ReviewSuggestionItem>();
+        NoteSourceText = string.Empty;
         StatusText = string.Empty;
         SelectionText = string.Empty;
         SummaryText = string.Empty;
@@ -108,7 +121,11 @@ public partial class SpeechRegisterViewModel : ObservableObject
     }
 
     /// <param name="selectedIndices">0-based paragraph indices the user selected in the grid.</param>
-    public void Initialize(Subtitle subtitle, IEnumerable<int> selectedIndices)
+    /// <param name="videoFileName">
+    /// The video this subtitle was opened with, when there is one. ★It is what identifies the film,
+    /// and the film is what the relationship note belongs to - see <see cref="LoadRelationshipNote"/>.
+    /// </param>
+    public void Initialize(Subtitle subtitle, IEnumerable<int> selectedIndices, string? videoFileName = null)
     {
         _subtitle = subtitle;
         _languageCode = LanguageAutoDetect.AutoDetectGoogleLanguage(subtitle);
@@ -123,6 +140,49 @@ public partial class SpeechRegisterViewModel : ObservableObject
         }
 
         SelectionText = string.Format(Se.Language.Tools.SpeechRegister.SelectedLinesX, _selectedNumbers.Count);
+        LoadRelationshipNote(videoFileName);
+    }
+
+    /// <summary>
+    /// Fills the relationship note for the film being edited.
+    ///
+    /// ★This also fixes a real bug. The note used to be a single global setting, so it survived
+    ///   into the next film - and a note that asserts "the wife speaks politely to the neighbours"
+    ///   is worse than an empty box when the next film has neither a wife nor neighbours. It is now
+    ///   keyed by the film, and the global setting is used only when the film cannot be identified
+    ///   at all (no video, or one the catalogue does not know), where there is nothing to key by.
+    /// </summary>
+    private void LoadRelationshipNote(string? videoFileName)
+    {
+        var context = SpeakerContext.Resolve(videoFileName);
+        _workCode = context.Code;
+        _noteAsLoaded = context.Note;
+
+        if (!context.IsEmpty)
+        {
+            RelationshipNote = context.Note;
+            NoteSourceText = DescribeSource(context.Source);
+            return;
+        }
+
+        // Nothing known about this film - fall back to the old global note.
+        RelationshipNote = Se.Settings.Tools.SpeechRegister.RelationshipNote;
+        NoteSourceText = string.Empty;
+    }
+
+    private static string DescribeSource(SpeakerContextSource source)
+    {
+        var ls = Se.Language.Tools.SpeechRegister;
+        var name = source switch
+        {
+            SpeakerContextSource.GuidebookPinned => ls.NoteSourceGuidebookPinned,
+            SpeakerContextSource.Guidebook => ls.NoteSourceGuidebook,
+            SpeakerContextSource.VideoTags => ls.NoteSourceVideoTags,
+            SpeakerContextSource.Catalog => ls.NoteSourceCatalog,
+            _ => string.Empty,
+        };
+
+        return name.Length == 0 ? string.Empty : string.Format(ls.NoteSourceX, name);
     }
 
     private SpeechLevel CurrentLevel()
@@ -154,6 +214,8 @@ public partial class SpeechRegisterViewModel : ObservableObject
 
     partial void OnIsRunningChanged(bool value) => IsNotRunning = !value;
 
+    partial void OnNoteSourceTextChanged(string value) => IsNoteSourceVisible = !string.IsNullOrEmpty(value);
+
     private void SaveSettings()
     {
         var s = Se.Settings.Tools.AiReview;
@@ -169,7 +231,33 @@ public partial class SpeechRegisterViewModel : ObservableObject
 
         var r = Se.Settings.Tools.SpeechRegister;
         r.Level = SpeechLevels.Token(CurrentLevel());
-        r.RelationshipNote = RelationshipNote ?? string.Empty;
+        SaveRelationshipNote(r);
+    }
+
+    /// <summary>
+    /// Persists the note where it belongs: with the film when we know which film it is, in the old
+    /// global setting when we do not.
+    ///
+    /// ★Only writes when the text actually changed. Storing an unedited auto-filled note would pin
+    ///   a machine's guess as though a human had approved it - and a pin is exactly what the
+    ///   translator's prescan is forbidden to overwrite, so that guess would then outlive every
+    ///   later attempt to derive a better one.
+    /// </summary>
+    private void SaveRelationshipNote(SeSpeechRegister settings)
+    {
+        var note = RelationshipNote ?? string.Empty;
+
+        if (_workCode.Length == 0)
+        {
+            settings.RelationshipNote = note;
+            return;
+        }
+
+        if (!string.Equals(note.Trim(), _noteAsLoaded.Trim(), StringComparison.Ordinal))
+        {
+            JavGuidebook.Save(_workCode, note);
+            _noteAsLoaded = note;
+        }
     }
 
     [RelayCommand]
