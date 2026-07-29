@@ -123,12 +123,24 @@ public class SpeechRegisterWindow : Window
             .WithAccessibleName(ls.Level);
         comboLevel.MinWidth = 200;
 
+        var buttonEditPrompt = UiUtil.MakeButton(lr.EditPrompt, vm.EditPromptCommand)
+            .WithIconLeft("fa-solid fa-pen");
+
         var levelPanel = new StackPanel
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            VerticalAlignment = VerticalAlignment.Center,
-            Children = { UiUtil.MakeLabel(ls.Level), comboLevel },
+            Spacing = 6,
+            VerticalAlignment = VerticalAlignment.Top,
+            Children =
+            {
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Children = { UiUtil.MakeLabel(ls.Level), comboLevel },
+                },
+                buttonEditPrompt,
+            },
         };
 
         // ★Free text, not a picker. The point of this box is that a film has more than one

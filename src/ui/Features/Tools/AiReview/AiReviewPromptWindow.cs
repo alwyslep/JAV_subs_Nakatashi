@@ -13,7 +13,8 @@ public class AiReviewPromptWindow : Window
     public AiReviewPromptWindow(AiReviewPromptViewModel vm)
     {
         UiUtil.InitializeWindow(this, GetType().Name);
-        Title = Se.Language.Tools.AiReview.EditPromptTitle;
+        // Nakatashi: 제목과 설명을 뷰모델에서 받는다 — 화계 도구가 같은 창을 재사용한다.
+        this.Bind(TitleProperty, new Binding(nameof(vm.TitleText)));
         Width = 640;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
@@ -22,7 +23,8 @@ public class AiReviewPromptWindow : Window
 
         var l = Se.Language.Tools.AiReview;
 
-        var labelInfo = UiUtil.MakeTextBlock(l.PromptInfo);
+        var labelInfo = UiUtil.MakeTextBlock(string.Empty);
+        labelInfo.Bind(TextBlock.TextProperty, new Binding(nameof(vm.InfoText)));
         labelInfo.TextWrapping = TextWrapping.Wrap;
         labelInfo.Opacity = 0.75;
 

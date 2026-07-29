@@ -504,10 +504,24 @@ public partial class SpeechRegisterViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Opens AI review's prompt editor against this tool's prompt. Same window, different
+    /// storage - a second editor would be one more copy to keep in step.
+    /// </summary>
     [RelayCommand]
-    private void ResetPrompt()
+    private async Task EditPrompt()
     {
-        Se.Settings.Tools.SpeechRegister.Prompt = SeSpeechRegister.DefaultPrompt;
+        if (Window == null)
+        {
+            return;
+        }
+
+        var ls = Se.Language.Tools.SpeechRegister;
+        await _windowService.ShowDialogAsync<AiReviewPromptWindow, AiReviewPromptViewModel>(Window, vm =>
+            vm.Initialize(ls.EditPromptTitle, ls.PromptInfo,
+                () => Se.Settings.Tools.SpeechRegister.Prompt,
+                value => Se.Settings.Tools.SpeechRegister.Prompt = value,
+                SeSpeechRegister.DefaultPrompt));
     }
 
     [RelayCommand]

@@ -105,6 +105,52 @@ public class SpeechRegisterWiringTests
         Assert.False(SpeechRegisterPrompt.ShouldDrop("알겠어", "알겠습니다"));
     }
 
+    [AvaloniaFact]
+    public void The_shared_prompt_editor_still_edits_ai_reviews_prompt()
+    {
+        // ★AiReviewPromptViewModel was parameterized so this feature could reuse it. The
+        //   no-argument Initialize() is AI review's own entry point and must keep pointing at
+        //   AI review's prompt and its default - a silent switch would let a user "reset" the
+        //   proofreading prompt into a speech-level one.
+        var saved = Se.Settings.Tools.AiReview.Prompt;
+        try
+        {
+            Se.Settings.Tools.AiReview.Prompt = "짜파게티";
+            var vm = new Nikse.SubtitleEdit.Features.Tools.AiReview.AiReviewPromptViewModel();
+            vm.Initialize();
+            Assert.Equal("짜파게티", vm.PromptText);
+            Assert.Equal(Se.Language.Tools.AiReview.EditPromptTitle, vm.TitleText);
+
+            vm.ResetToDefaultCommand.Execute(null);
+            Assert.Equal(SeAiReview.DefaultPrompt, vm.PromptText);
+            Assert.NotEqual(SeSpeechRegister.DefaultPrompt, vm.PromptText);
+        }
+        finally
+        {
+            Se.Settings.Tools.AiReview.Prompt = saved;
+        }
+    }
+
+    [AvaloniaFact]
+    public void The_shared_prompt_editor_writes_back_where_it_was_told_to()
+    {
+        var target = "처음";
+        var vm = new Nikse.SubtitleEdit.Features.Tools.AiReview.AiReviewPromptViewModel();
+        vm.Initialize("제목", "설명", () => target, v => target = v, SeSpeechRegister.DefaultPrompt);
+
+        Assert.Equal("처음", vm.PromptText);
+        Assert.Equal("제목", vm.TitleText);
+
+        // Reset must reach for the default it was handed, not AI review's.
+        vm.ResetToDefaultCommand.Execute(null);
+        Assert.Equal(SeSpeechRegister.DefaultPrompt, vm.PromptText);
+
+        vm.PromptText = "바뀐 값";
+        vm.OkCommand.Execute(null);
+        Assert.Equal("바뀐 값", target);
+        Assert.NotEqual("바뀐 값", Se.Settings.Tools.AiReview.Prompt);
+    }
+
     [Fact]
     public void Default_prompt_is_used_when_the_stored_one_was_emptied()
     {
