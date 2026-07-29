@@ -54,6 +54,21 @@
 		-->
 		<PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" Version="8.3.1.5" />
 		<PackageReference Include="TagLibSharp" Version="2.3.0" />
+		<!--
+		  Fork addition. The subtitle work shares three SQLite catalogues with the sibling
+		  translator project (terms, speech-level guidebooks and metrics), so the editor reads
+		  and writes them directly rather than re-deriving what is already on disk.
+		  See docs-fork/video-metadata-plan.ko.md.
+		-->
+		<PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+		<!--
+		  Pin the SQLitePCLRaw bundle one patch above what Microsoft.Data.Sqlite 10.0.10 resolves
+		  to (2.1.11). That version carries a high-severity advisory (GHSA-2m69-gcr7-jv3q) and
+		  restore reports it as NU1903, which would put the first warning into a tree this fork
+		  keeps at zero. 2.1.12 clears the advisory and ships SQLite 3.53.3 instead of 3.49.1.
+		  Drop this line once Microsoft.Data.Sqlite resolves to a clean bundle on its own.
+		-->
+		<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
 	</ItemGroup>
 
 	<ItemGroup>

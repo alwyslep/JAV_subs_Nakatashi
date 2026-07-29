@@ -61,6 +61,8 @@ public class Se
     public SeFormats Formats { get; set; } = new();
     public SeOcr Ocr { get; set; } = new();
     public SePlugins Plugins { get; set; } = new();
+    // Fork addition - paths of the catalogues shared with the sibling translator project.
+    public SeJavData JavData { get; set; } = new();
     public static SeLanguage Language { get; set; } = new();
     public static Se Settings { get; set; } = new();
 
