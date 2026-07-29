@@ -7,6 +7,7 @@ namespace Nikse.SubtitleEdit.Logic.Config;
 public class SeTools
 {
     public SeAiReview AiReview { get; set; } = new();
+    public SeSpeechRegister SpeechRegister { get; set; } = new(); // Nakatashi: 화계 도구
     public SeAudioToText AudioToText { get; set; } = new();
     public SeConvertActors ConvertActors { get; set; } = new();
     public SeFixCommonErrors FixCommonErrors { get; set; } = new();

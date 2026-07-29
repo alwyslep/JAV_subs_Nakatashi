@@ -5475,6 +5475,40 @@ public partial class MainViewModel :
         }
     }
 
+    // Nakatashi: 화계(話階) 맞추기 — 그리드에서 고른 줄들의 종결어미를 지정한 화계로 맞춘다.
+    // ★한 줄이 아니라 선택 영역을 다루는 것이 요점이다. 화계는 파일 전체에 걸친 성질이라
+    //   AI 도우미의 한 줄 흐름으로는 1,000줄짜리 자막에서 쓸 수가 없다.
+    [RelayCommand]
+    private async Task ShowSpeechRegister()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        if (IsEmpty)
+        {
+            ShowSubtitleNotLoadedMessage();
+            return;
+        }
+
+        // 선택이 없으면 현재 줄 하나. 우클릭으로 들어오면 이미 선택이 있다.
+        var selected = SubtitleGrid.SelectedItems.Cast<SubtitleLineViewModel>().ToList();
+        var indices = selected.Count > 0
+            ? selected.Select(p => Subtitles.IndexOf(p)).Where(i => i >= 0).ToList()
+            : new List<int> { SelectedSubtitleIndex ?? 0 };
+
+        var idx = SelectedSubtitleIndex ?? 0;
+        var viewModel = await ShowDialogAsync<Features.Tools.SpeechRegister.SpeechRegisterWindow,
+            Features.Tools.SpeechRegister.SpeechRegisterViewModel>(vm => vm.Initialize(GetUpdateSubtitle(), indices));
+
+        if (viewModel.OkPressed)
+        {
+            ApplyFixedSubtitle(viewModel.FixedSubtitle, idx, SelectedSubtitleFormat);
+            ShowStatus(string.Format(Se.Language.Main.FixedXLines, viewModel.FixedSubtitle.Paragraphs.Count));
+        }
+    }
+
     [RelayCommand]
     private async Task ShowToolsAiReview()
     {

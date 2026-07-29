@@ -1026,6 +1026,22 @@ public static partial class InitListViewAndEditBox
         bookmarkMenuItem.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsSubtitleGridDataMenuVisible)));
         flyout.Items.Add(bookmarkMenuItem);
 
+        // Nakatashi: 화계 맞추기 — 여기가 주 진입점이다. 우클릭하는 시점에 이미 여러 줄이
+        // 선택돼 있고, 이 기능이 다루는 것이 바로 그 선택 영역이다.
+        var speechRegisterMenuItem = new MenuItem
+        {
+            Header = Se.Language.Tools.SpeechRegister.MenuItem,
+            Command = vm.ShowSpeechRegisterCommand,
+            DataContext = vm,
+            Icon = new Icon
+            {
+                Value = "mdi-account-voice",
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+        };
+        speechRegisterMenuItem.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsSubtitleGridDataMenuVisible)));
+        flyout.Items.Add(speechRegisterMenuItem);
+
         var menuItemSelectedLines = new MenuItem
         {
             Header = Se.Language.General.SelectedLines,
@@ -1567,6 +1583,18 @@ public static partial class InitListViewAndEditBox
         };
         flyoutTextBox.Items.Add(menuItemTextBoxAiAssistant);
 
+        // Nakatashi: 화계 맞추기 — AI 도우미 바로 옆. 도우미의 네 버튼은 한 줄짜리라
+        // 화계처럼 파일 전체에 걸친 성질을 다루지 못한다(그래서 별도 창이다).
+        flyoutTextBox.Items.Add(new MenuItem
+        {
+            Header = Se.Language.Tools.SpeechRegister.MenuItem,
+            Command = vm.ShowSpeechRegisterCommand,
+            Icon = new Icon
+            {
+                Value = "mdi-account-voice",
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+        });
 
         // translation mode (original text)
         var textLabelOriginal = new TextBlock

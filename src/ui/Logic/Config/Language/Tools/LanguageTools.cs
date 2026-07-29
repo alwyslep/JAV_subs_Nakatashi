@@ -4,6 +4,7 @@ public class LanguageTools
 {
     public LanguageAiReview AiReview { get; set; } = new();
     public LanguageAiAssistant AiAssistant { get; set; } = new();
+    public LanguageSpeechRegister SpeechRegister { get; set; } = new(); // Nakatashi: 화계 도구
     public LanguageFixCommonErrors FixCommonErrors { get; set; } = new();
     public LanguageAdjustDisplayDurations AdjustDurations { get; set; } = new();
     public LanguageApplyDurationLimits ApplyDurationLimits { get; set; } = new();

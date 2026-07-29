@@ -1402,6 +1402,25 @@
       "engineError": "AI 엔진에 접근할 수 없습니다: {0}",
       "setupHint": "도구 -> AI 검토에서 먼저 엔진과 모델을 선택하세요."
     },
+    "speechRegister": {
+      "title": "화계 맞추기",
+      "menuItem": "화계 맞추기...",
+      "level": "화계",
+      "levelDeferential": "하십시오체",
+      "levelPolite": "해요체",
+      "levelCasual": "해체 (반말)",
+      "levelPlain": "해라체",
+      "relationshipNote": "누가 누구에게 (선택)",
+      "relationshipNoteWatermark": "아내→상층부 해요체\n상층부→아내 해체, 명령조",
+      "relationshipNoteInfo": "방향과 등급을 한 줄에 하나씩 적으세요. '수줍은 말투' 같은 서술은 화계가 아니라 모델이 따를 수 없습니다.",
+      "run": "선택한 줄 맞추기",
+      "selectedLinesX": "{0}줄 선택됨",
+      "workingLineXOfY": "{1}줄 중 {0}줄 처리 중...",
+      "doneXSuggestions": "완료 - {1}줄에서 제안 {0}건",
+      "stemChangedWarning": "어미 말고 다른 곳도 바뀌었습니다 - 확인하세요",
+      "editPromptTitle": "화계 프롬프트 편집",
+      "promptInfo": "모델에 보내는 지시문입니다. {language}는 자막 언어, {level}은 고른 화계, {notes}는 위의 관계 메모로 바뀝니다."
+    },
     "aiAssistant": {
       "title": "AI 도우미",
       "currentLine": "현재 줄",
