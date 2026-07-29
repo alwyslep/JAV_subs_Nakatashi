@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Nikse.SubtitleEdit.Logic.JavData;
 
@@ -85,6 +86,26 @@ public static class JavTerms
             return Array.Empty<JavTermPair>();
         }
     }
+
+    /// <summary>
+    /// The one line a pass that is not supposed to be renaming anyone should be given, or an empty
+    /// string when the series has no recorded spellings.
+    ///
+    /// ★Worded as an instruction, not as context. Everything else these prompts receive is evidence
+    ///   to reason from; this is a constraint, because a name the series has already settled on must
+    ///   survive a pass whose job is sentence endings or typos. Both callers - the speech-level pass
+    ///   and AI review - format it identically so a spelling cannot mean one thing in one window and
+    ///   something else in the other.
+    /// </summary>
+    public static string NamesInstruction(string? seriesPrefix)
+    {
+        var forms = AddressForms(seriesPrefix);
+        return forms.Count == 0
+            ? string.Empty
+            : NamesInstructionLabel + ": " + string.Join(", ", forms.Select(f => f.Source + " = " + f.Korean));
+    }
+
+    internal const string NamesInstructionLabel = "how this series writes names - keep these spellings exactly";
 
     /// <summary>
     /// Records the spelling a human chose for a name in this series, and pins it so neither the

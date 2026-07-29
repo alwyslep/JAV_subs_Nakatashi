@@ -98,6 +98,24 @@ public class JavTermsTests
         }
     }
 
+    // ★Empty rather than a header with nothing under it: a prompt line that names no spellings
+    //   still spends tokens and still tells the model there is a rule to follow.
+    [Fact]
+    public void NamesInstruction_IsEmptyWhenTheSeriesHasNoSpellings()
+    {
+        var saved = Se.Settings.JavData;
+        try
+        {
+            Se.Settings.JavData = new SeJavData { DataFolder = @"Z:\nothing-here" };
+            Assert.Equal(string.Empty, JavTerms.NamesInstruction("NSFS"));
+            Assert.Equal(string.Empty, JavTerms.NamesInstruction(null));
+        }
+        finally
+        {
+            Se.Settings.JavData = saved;
+        }
+    }
+
     [Fact]
     public void Pin_RefusesWhenWritingIsSwitchedOff()
     {

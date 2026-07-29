@@ -10,6 +10,7 @@ using Nikse.SubtitleEdit.Features.Translate.LlamaCppEngineSettings;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.Download;
+using Nikse.SubtitleEdit.Logic.JavData;
 using Nikse.SubtitleEdit.Logic.LlamaCpp;
 using System;
 using System.Collections.Generic;
@@ -60,6 +61,10 @@ public partial class AiReviewViewModel : ObservableObject
     private readonly List<ReviewSuggestionItem> _allSuggestions = new();
     private Subtitle _subtitle = new();
     private string _languageCode = "en";
+
+    // Fork addition - how this film's series writes its names, or empty. Built once in
+    // Initialize because it is a database read and the run loop must not do one per chunk.
+    private string _namesInstruction = string.Empty;
     private CancellationTokenSource _cancellationTokenSource = new();
     private bool _syncingSelection;
 
@@ -104,11 +109,17 @@ public partial class AiReviewViewModel : ObservableObject
         UpdateEngineVisibility();
     }
 
-    public void Initialize(Subtitle subtitle, SubtitleFormat? subtitleFormat)
+    /// <param name="videoFileName">
+    /// Fork addition. Identifies the film, and through it the series whose name spellings the
+    /// shared glossary has already settled - a proofreading pass must not respell them.
+    /// </param>
+    public void Initialize(Subtitle subtitle, SubtitleFormat? subtitleFormat, string? videoFileName = null)
     {
         _subtitle = subtitle;
         _languageCode = LanguageAutoDetect.AutoDetectGoogleLanguage(subtitle);
         LanguageDisplay = GetLanguageDisplayName(_languageCode);
+        _namesInstruction = JavTerms.NamesInstruction(
+            JavDataPaths.SeriesPrefix(JavCatalog.ResolveCode(videoFileName)));
     }
 
     private static string GetLanguageDisplayName(string code)
@@ -321,7 +332,8 @@ public partial class AiReviewViewModel : ObservableObject
         }
 
         var chunks = AiReviewChunker.BuildChunks(lines, Se.Settings.Tools.AiReview.MaxLinesPerBatch);
-        var systemPrompt = AiReviewProtocol.BuildSystemPrompt(Se.Settings.Tools.AiReview.Prompt, GetLanguageDisplayName(_languageCode));
+        var systemPrompt = AiReviewProtocol.BuildSystemPrompt(
+            Se.Settings.Tools.AiReview.Prompt, GetLanguageDisplayName(_languageCode), _namesInstruction);
 
         using var client = new AiReviewClient();
         var processedLines = 0;

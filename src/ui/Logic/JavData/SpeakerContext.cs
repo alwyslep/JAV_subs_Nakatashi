@@ -174,10 +174,10 @@ public static class SpeakerContext
         // ★Last, and worded as an instruction rather than a fact. Everything above is evidence to
         //   reason from; this is the one line the model must obey literally, because a name the
         //   series has already settled on must not be respelled by a pass that is only meant to be
-        //   changing sentence endings.
+        //   changing sentence endings. AI review is given the same sentence, from the same builder.
         if (forms.Count > 0)
         {
-            Append(sb, "how this series writes names - keep these spellings exactly",
+            Append(sb, JavTerms.NamesInstructionLabel,
                 string.Join(", ", forms.Select(f => f.Source + " = " + f.Korean)));
         }
 

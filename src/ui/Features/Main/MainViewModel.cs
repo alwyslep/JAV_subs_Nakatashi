@@ -5526,7 +5526,8 @@ public partial class MainViewModel :
         }
 
         var idx = SelectedSubtitleIndex ?? 0;
-        var viewModel = await ShowDialogAsync<AiReviewWindow, AiReviewViewModel>(vm => { vm.Initialize(GetUpdateSubtitle(), SelectedSubtitleFormat); });
+        // 영상 경로: 이 작품이 속한 시리즈의 확립된 인명 표기를 교정 패스가 흔들지 않게 한다.
+        var viewModel = await ShowDialogAsync<AiReviewWindow, AiReviewViewModel>(vm => { vm.Initialize(GetUpdateSubtitle(), SelectedSubtitleFormat, _videoFileName); });
 
         if (viewModel.OkPressed)
         {

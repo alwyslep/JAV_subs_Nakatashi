@@ -35,9 +35,21 @@ public static class AiReviewProtocol
         "\"reason\":\"<short reason>\",\"category\":\"spelling|grammar|punctuation|casing|other\"}]}. " +
         "Include only lines that actually need a correction; if none do, answer {\"changes\":[]}.";
 
-    public static string BuildSystemPrompt(string instructions, string languageName)
+    /// <param name="namesInstruction">
+    /// Fork addition: how the film's series writes its names, when the shared glossary knows.
+    /// ★Appended rather than substituted into the user's instructions, so a customised prompt that
+    ///   never heard of this still gets it. The default prompt already says "keep names as they
+    ///   are"; this says which spellings those are, which is the difference between the model
+    ///   leaving a name alone and the model guessing at a romanisation.
+    /// </param>
+    public static string BuildSystemPrompt(string instructions, string languageName, string? namesInstruction = null)
     {
         var prompt = (instructions ?? string.Empty).Replace("{language}", languageName);
+        if (!string.IsNullOrWhiteSpace(namesInstruction))
+        {
+            prompt += "\n\n" + namesInstruction.Trim();
+        }
+
         return prompt + ProtocolText;
     }
 
