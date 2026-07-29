@@ -466,6 +466,13 @@ public static class InitMenu
                 Header = l.AiReview,
                 Command = vm.ShowToolsAiReviewCommand,
             },
+            // Nakatashi: 이름 일관성 검사. AI 리뷰 바로 아래 — 둘 다 파일 전체를 한 번에 읽는
+            // AI 패스이고 엔진 설정을 공유한다.
+            new MenuItem
+            {
+                Header = Se.Language.Tools.NameCheck.MenuItem,
+                Command = vm.ShowToolsNameCheckCommand,
+            },
             new MenuItem
             {
                 Header = l.ChangeCasing,

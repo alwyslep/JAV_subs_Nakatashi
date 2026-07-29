@@ -5,7 +5,7 @@
 # A command ADDED means upstream (or we) introduced one - place it in our layout,
 # then regenerate with:  ./tools/build.ps1 menu-baseline
 #
-# 145 commands.
+# 146 commands.
 ClearSecondarySubtitleCommand
 CommandExitCommand
 CommandFileNewCommand
@@ -126,6 +126,7 @@ ShowToolsMergeLinesWithSameTextCommand
 ShowToolsMergeLinesWithSameTimeCodesCommand
 ShowToolsMergeShortLinesCommand
 ShowToolsMergeTwoSubtitlesCommand
+ShowToolsNameCheckCommand
 ShowToolsRemoveTextForHearingImpairedCommand
 ShowToolsRenumberCommand
 ShowToolsSplitBreakLongLinesCommand

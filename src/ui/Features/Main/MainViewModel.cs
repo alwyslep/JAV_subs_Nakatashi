@@ -5511,6 +5511,34 @@ public partial class MainViewModel :
         }
     }
 
+    // Nakatashi: 이름 일관성 검사 — 같은 인물의 표기가 파일 안에서 갈리거나, 이름이 음차가 아니라
+    // 의미로 옮겨진 곳을 찾는다. ★선택 영역이 아니라 파일 전체다: 두 번째 표기는 첫 번째 옆에
+    // 놓고 봐야만 보이므로, 잘라서 보내면 찾으려는 것이 바로 그 사이에서 사라진다.
+    [RelayCommand]
+    private async Task ShowToolsNameCheck()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        if (IsEmpty)
+        {
+            ShowSubtitleNotLoadedMessage();
+            return;
+        }
+
+        var idx = SelectedSubtitleIndex ?? 0;
+        var viewModel = await ShowDialogAsync<Features.Tools.NameCheck.NameCheckWindow,
+            Features.Tools.NameCheck.NameCheckViewModel>(vm => vm.Initialize(GetUpdateSubtitle(), _videoFileName));
+
+        if (viewModel.OkPressed)
+        {
+            ApplyFixedSubtitle(viewModel.FixedSubtitle, idx, SelectedSubtitleFormat);
+            ShowStatus(string.Format(Se.Language.Main.FixedXLines, viewModel.FixedSubtitle.Paragraphs.Count));
+        }
+    }
+
     [RelayCommand]
     private async Task ShowToolsAiReview()
     {

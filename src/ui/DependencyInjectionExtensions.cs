@@ -393,6 +393,7 @@ public static class DependencyInjectionExtensions
         collection.AddTransient<FixCommonErrorsProfileViewModel>();
         collection.AddTransient<Features.Tools.AiReview.AiReviewViewModel>();
         collection.AddTransient<Features.Tools.SpeechRegister.SpeechRegisterViewModel>(); // Nakatashi: 화계 도구
+        collection.AddTransient<Features.Tools.NameCheck.NameCheckViewModel>(); // Nakatashi: 이름 일관성 검사
         collection.AddTransient<Features.Main.AiAssistant.AiAssistantViewModel>();
         collection.AddTransient<Features.Tools.AiReview.AiReviewPromptViewModel>();
         collection.AddTransient<FixCommonErrorsViewModel>();
