@@ -397,12 +397,60 @@ this was live, not theoretical.
 
 The two commits (`paths.py` + the `pinned` column) are therefore on **both** branches — cherry-picked
 to `main` as `257a65e` / `e47d788`, 0 conflicts. The A/B baseline is intact: the only difference
-between the branches is still `meta.py`'s `PRESCAN_PROMPT` and `instructions/pornify.txt`. Verified
+between the branches is still `meta.py`'s `PRESCAN_PROMPT` and `instructions/pornify.txt` *(true
+when written; superseded that same evening — see the A/B post-mortem below)*. Verified
 afterwards: all **17** Python self-check modules pass (`python -m srt_translator.test_*` — there is
 no pytest in the venv), `paths.*()` returns the same `D:\` paths as before, and `guidebook.load()`
 reads from SQLite.
 
 **Anything that changes the DB contract goes to both branches.** A prompt experiment does not.
+
+### The prompt A/B is settled: c752e12 stays (2026-07-30 evening)
+
+The prompt A/B (c752e12 on/off via `swap_prompt.py` file swap, engine held constant) ran to
+completion — 10 works, ~2,260 judged pairs per arm, the largest controlled sample this project
+has had (DB `prompt_ver`: A=`5e22e405`, B=`573a39bc`):
+
+| Metric | A (c752e12) | B (pre-c752e12) |
+|---|---|---|
+| Collapse (drops) | **42 / 2,257 = 1.86%** | 65 / 2,282 = 2.85% |
+| Register shift ja→ko (polite share) | 30.7% → 25.2% (**−5.5pt**) | 30.7% → 24.4% (−6.3pt) |
+| Alarms | 0 | 0 |
+
+A ≤ B on drops in 8 of 10 works. Register preservation splits 5:5 per work with one legible
+pattern: on plain-heavy sources (NSFS-351 ja 14.1%, NSFS-381 16.6%) A overshoots politeness
+(+7.2 / +3.0pt) while B hugs the source — c752e12's "source polite → target formal" rule is the
+suspect. The next prompt experiment should aim there; the drop guard is not the problem.
+
+The run also produced a post-mortem worth more than the verdict:
+
+- **Mid-batch, a concurrent session merged `origin/feat/register` into `main`** (`49514b8`,
+  18:02 — both branches now point at the merge; that is what superseded the sentence above).
+  The merge reverted `swap_prompt.py`'s working-tree B swap while the batch was still running.
+- The engine re-reads `instructions/{tone}.txt` **per file** (`engine.py` passes the path as
+  `instruction_file`) and `regdb` stamps `prompt_ver` (that file's sha1) **at record time**, so
+  five works silently became A-instructions + B-prescan hybrids stamped as A — and
+  `INSERT OR REPLACE` over `runs_uniq` made those hybrid rows **overwrite the five real A
+  rows**. The A column above uses the original values, which survive only because the session
+  had dumped them minutes before the merge:
+
+  | work | judged | drops | lifts | ja polite/plain | ko polite/casual |
+  |---|---|---|---|---|---|
+  | NSFS-338 | 333 | 7 | 0 | 159/203 | 232/444 |
+  | NSFS-351 | 71 | 0 | 1 | 11/67 | 38/140 |
+  | NSFS-361 | 171 | 4 | 0 | 42/163 | 84/452 |
+  | NSFS-373 | 125 | 3 | 2 | 33/102 | 53/195 |
+  | NSFS-381 | 285 | 3 | 1 | 50/252 | 97/399 |
+
+  (ts `16:34:45` / `16:36:47` / `16:41:48` / `16:45:53` / `16:50:50`, 2026-07-30; every other
+  key field equals the hybrid rows'. Re-inserting these exact values with `prompt_ver`
+  `5e22e405` REPLACEs the hybrids back out — that is the whole restore.)
+- **The rule this bought: an A/B batch runs from a temp `git worktree` pinned to the
+  experiment commit** (main worktree's venv, cwd = the temp worktree — the package resolves
+  from cwd), never by swapping files in the live tree. The contaminated five were rerun exactly
+  that way (worktree at `0970baa` + the B swap, sha verified `573a39bc`) and are the B numbers
+  above. And long batches launch as **detached processes with an exit marker** — the first B
+  batch died at 4 of 10 works because a background task dies with its session.
 
 `.claude/settings.json` holds a permission allowlist for the usual dotnet/git commands. Upstream's
 `.gitignore` excludes `.claude/`, so it is **local-only and not in the repo** — recreate it by hand
