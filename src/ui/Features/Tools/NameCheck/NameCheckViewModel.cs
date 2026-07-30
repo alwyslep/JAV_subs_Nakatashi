@@ -92,6 +92,13 @@ public partial class NameCheckViewModel : ObservableObject
     /// </summary>
     private readonly HashSet<string> _directionCorrected = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Names the series' own glossary reversed, before any model was asked. Kept apart from
+    /// <see cref="_directionCorrected"/> because the authority differs and the row should say which
+    /// one spoke - and because a glossary decision is not re-opened by the model afterwards.
+    /// </summary>
+    private readonly HashSet<string> _glossaryCorrected = new(StringComparer.Ordinal);
+
     private Subtitle _subtitle = new();
     private string _languageCode = "ko";
     private string _seriesPrefix = string.Empty;
@@ -343,6 +350,20 @@ public partial class NameCheckViewModel : ObservableObject
         IReadOnlyList<NameFinding> findings, string url, string model, string? apiKey, CancellationToken ct)
     {
         var resolved = findings.ToList();
+
+        // ★The series' own glossary gets asked first, because it is free, deterministic, and was
+        //   measured to be right where both the model and the original-language subtitle were wrong.
+        //   See JavTerms.RankSpellings for the case.
+        for (var i = 0; i < resolved.Count; i++)
+        {
+            var swapped = ApplyGlossaryPreference(resolved[i]);
+            if (swapped != null)
+            {
+                resolved[i] = swapped;
+                _glossaryCorrected.Add(swapped.Korean);
+            }
+        }
+
         if (_originalDialogue == null || resolved.Count == 0)
         {
             return resolved;
@@ -437,7 +458,11 @@ public partial class NameCheckViewModel : ObservableObject
             var updated = NameCheckProtocol.WithOriginalForm(
                 finding, form, question.Lines.Select(l => l.Original));
 
-            if (!form.ChosenSpellingFits)
+            // ★A glossary decision is not re-opened by the model. The glossary is a record of how this
+            //   series spells the name; the model is reading one line of a machine transcription that
+            //   was measured to mis-hear it. The model still gets to fill the source and say whether
+            //   this is a person.
+            if (!form.ChosenSpellingFits && !_glossaryCorrected.Contains(finding.Korean))
             {
                 // ★The original settled it, so apply the fix in the right direction rather than
                 //   refusing to apply it. Only when the swap is not usable does the row fall back to
@@ -463,6 +488,33 @@ public partial class NameCheckViewModel : ObservableObject
         }
 
         return resolved;
+    }
+
+    /// <summary>
+    /// The finding turned round because the series glossary already uses one of the other spellings,
+    /// or null when the glossary has no opinion - which is the common case.
+    ///
+    /// ★It only overrules when the evidence is one-sided: a pinned row, or strictly more rows than any
+    ///   rival. The glossary is harvested by machine too, so a tie is not an argument - that is exactly
+    ///   how タキモス got in there next to five rows saying 滝本.
+    /// </summary>
+    private NameFinding? ApplyGlossaryPreference(NameFinding finding)
+    {
+        if (_seriesPrefix.Length == 0)
+        {
+            return null;
+        }
+
+        var candidates = new List<string> { finding.Korean };
+        candidates.AddRange(finding.Wrong);
+        var ranked = JavTerms.RankSpellings(_seriesPrefix, candidates);
+        if (ranked.Count < 2 || string.Equals(ranked[0].Spelling, finding.Korean, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var decisive = ranked[0].Pinned || ranked[0].Rows > ranked[1].Rows;
+        return decisive ? NameCheckProtocol.SwapDirection(finding, ranked[0].Spelling) : null;
     }
 
     /// <summary>Lines containing one spelling, each paired with the original-language line.</summary>
@@ -495,7 +547,11 @@ public partial class NameCheckViewModel : ObservableObject
             reason = finding.Source + " -> " + finding.Korean + (reason.Length > 0 ? " - " + reason : string.Empty);
         }
 
-        if (_directionCorrected.Contains(finding.Korean))
+        if (_glossaryCorrected.Contains(finding.Korean))
+        {
+            reason = (reason + " (" + ln.GlossaryCorrected + ")").Trim();
+        }
+        else if (_directionCorrected.Contains(finding.Korean))
         {
             reason = (reason + " (" + ln.DirectionCorrected + ")").Trim();
         }
@@ -628,6 +684,7 @@ public partial class NameCheckViewModel : ObservableObject
         _notAPerson.Clear();
         _spellingDoubted.Clear();
         _directionCorrected.Clear();
+        _glossaryCorrected.Clear();
         Suggestions.Clear();
         UpdateSummary();
     }

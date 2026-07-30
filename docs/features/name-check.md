@@ -73,7 +73,9 @@ cannot teach the glossary as often.
 - **A name the original says is not a person is not saved** — the line is still fixed, and the row says *"not a person in the original"*.
 - **When the original contradicts the chosen spelling, the suggestion is turned round.** Measured: the pass offered 히노코리 씨 as correct with 히노보리 씨 as the mistake, while the original said ひのぼり — so the fix is applied the other way instead, and the row says *"reversed: the original supports the other spelling"*. When the reversal is not usable, the row is shown, explained and left **unchecked** rather than applied.
 
-> **A limit worth knowing.** The original-language subtitle is itself usually machine-transcribed, so it can be wrong too. On one measured film it spelled the same person both 宅本 (the name) and タキモス (a mis-hearing), the mis-hearing more often — and the check confirmed the mis-hearing. Read a reversal as a strong hint, not a verdict.
+- **The series' own glossary is asked first, and it is free.** When the spellings in the file disagree and the glossary already records one of them for this series, that wins — no model involved. A spelling you pinned wins outright; otherwise the reading with more rows behind it does, and a tie counts as no opinion. The row says *"reversed: this series already uses the other spelling"*.
+
+> **A limit worth knowing.** The original-language subtitle is itself usually machine-transcribed, so it can be wrong too. On one measured film it spelled the same person both `宅本` and `タキモス` — and the real name turned out to be neither, but `滝本`, which only the glossary had. That is why the glossary is asked first. Where the glossary has no opinion, read a reversal as a strong hint rather than a verdict.
 - Pinned rows are protected on the translator side — its re-harvest and its clean-up pass both skip them, so a machine cannot overwrite a spelling a person chose.
 
 ## How often it finds something

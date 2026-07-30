@@ -202,6 +202,116 @@ public static class JavTerms
     /// ★The length floors are not padding. Without them the bare honorifics match themselves
     ///   (君→너, 王様→왕님) and the Korean 상 matches any word ending in it (変→이상).
     /// </summary>
+    /// <summary>How many glossary rows for this series back a spelling, and whether a person pinned it.</summary>
+    public sealed record SpellingSupport(string Spelling, int Rows, bool Pinned);
+
+    /// <summary>
+    /// Which of several competing spellings this series already uses, judged by its own glossary.
+    ///
+    /// ★Why this beats asking a model: it is free, deterministic, and it was measured to be right where
+    ///   the model was wrong. On APNS-372 the name pass could not decide between 타키모스 씨 and
+    ///   타키모토 씨, and the original-language subtitle did not settle it either - that subtitle is
+    ///   machine-transcribed and mis-heard the name two different ways (タキモス, and 宅本 which is not
+    ///   even in the glossary). The glossary knew: 滝本 / 滝本さん / 滝本先生 / Takimoto / たぎもつさん
+    ///   all say 타키모토, five rows to one for 타키모스. The right answer was already recorded.
+    ///
+    /// ★Honorifics are stripped before matching, because the glossary holds the same person as
+    ///   타키모토, 타키모토 씨 and 타키모토 선생님 and all three are evidence for the same reading.
+    ///
+    /// ★A pinned row wins outright rather than by count - it is a person's decision, and one of those
+    ///   outranks any number of harvested rows.
+    ///
+    /// Returns the candidates that have any support, best first. Empty when the glossary knows none of
+    /// them, which is the common case and means "no opinion" rather than "they are all wrong".
+    /// </summary>
+    public static IReadOnlyList<SpellingSupport> RankSpellings(string? seriesPrefix, IEnumerable<string> candidates)
+    {
+        var prefix = (seriesPrefix ?? string.Empty).Trim();
+        var wanted = candidates
+            .Select(c => (Original: (c ?? string.Empty).Trim(), Core: NameCore(c)))
+            .Where(c => c.Core.Length > 0)
+            .GroupBy(c => c.Original, StringComparer.Ordinal)
+            .Select(g => g.First())
+            .ToList();
+        if (prefix.Length == 0 || wanted.Count == 0)
+        {
+            return Array.Empty<SpellingSupport>();
+        }
+
+        using var connection = JavDb.OpenRead(JavDataPaths.TermsDb);
+        if (connection == null || !JavDb.HasTable(connection, TableName))
+        {
+            return Array.Empty<SpellingSupport>();
+        }
+
+        var rows = new Dictionary<string, (int Rows, bool Pinned)>(StringComparer.Ordinal);
+        foreach (var sql in new[]
+                 {
+                     "select ko, pinned from " + TableName + " where series = $series and quality = 'ok'",
+                     "select ko, 0 as pinned from " + TableName + " where series = $series and quality = 'ok'",
+                 })
+        {
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = sql;
+                command.Parameters.AddWithValue("$series", prefix);
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    var core = NameCore(JavDb.GetText(reader, 0));
+                    if (core.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    var pinned = JavDb.GetBool(reader, 1);
+                    foreach (var candidate in wanted)
+                    {
+                        if (!string.Equals(candidate.Core, core, StringComparison.Ordinal))
+                        {
+                            continue;
+                        }
+
+                        rows.TryGetValue(candidate.Original, out var seen);
+                        rows[candidate.Original] = (seen.Rows + 1, seen.Pinned || pinned);
+                    }
+                }
+
+                break;
+            }
+            catch
+            {
+                // Older glossary without the pinned column - try the legacy shape, then give up.
+                rows.Clear();
+            }
+        }
+
+        return rows
+            .Select(kvp => new SpellingSupport(kvp.Key, kvp.Value.Rows, kvp.Value.Pinned))
+            .OrderByDescending(s => s.Pinned)
+            .ThenByDescending(s => s.Rows)
+            .ThenBy(s => s.Spelling, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>A Korean address form with its trailing honorific removed, so the readings can be compared.</summary>
+    internal static string NameCore(string? korean)
+    {
+        var text = (korean ?? string.Empty).Trim();
+        // ★Longest first: 선생님 ends with 님, and stripping 님 from it would leave 선생 and make
+        //   "타키모토 선생님" and "타키모토 선생" look like different readings.
+        foreach (var honorific in KoreanHonorifics.OrderByDescending(h => h.Length))
+        {
+            if (text.Length > honorific.Length && text.EndsWith(honorific, StringComparison.Ordinal))
+            {
+                return text[..^honorific.Length].TrimEnd();
+            }
+        }
+
+        return text;
+    }
+
     internal static bool IsAddressForm(string source, string korean)
     {
         if (source.Length < 3 || korean.Length < 3)

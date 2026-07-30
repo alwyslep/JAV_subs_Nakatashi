@@ -230,6 +230,121 @@ public class JavTermsTests
         }
     }
 
+    // ★The glossary holds the same person as 타키모토, 타키모토 씨 and 타키모토 선생님, and all three
+    //   are evidence for the same reading. 선생님 has to be stripped before 님, or the last one would
+    //   look like a different name.
+    [Theory]
+    [InlineData("타키모토 씨", "타키모토")]
+    [InlineData("타키모토", "타키모토")]
+    [InlineData("타키모토 선생님", "타키모토")]
+    [InlineData("칸나짱", "칸나")]
+    [InlineData("이토 군", "이토")]
+    [InlineData("씨", "씨")]                 // nothing but the honorific - leave it alone
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void NameCore_StripsTheTrailingHonorific(string? korean, string expected)
+    {
+        Assert.Equal(expected, JavTerms.NameCore(korean));
+    }
+
+    /// <summary>
+    /// ★The measured case this exists for: the name pass could not decide between 타키모스 씨 and
+    ///   타키모토 씨, and the original-language subtitle did not settle it - it is machine-transcribed
+    ///   and mis-heard the name two ways. The glossary already knew, five rows to one.
+    /// </summary>
+    [Fact]
+    public void RankSpellings_PrefersTheReadingTheSeriesAlreadyUses()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "terms-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var saved = Se.Settings.JavData;
+        try
+        {
+            // The real rows from the shared glossary.
+            Se.Settings.JavData = new SeJavData
+            {
+                TermsDbPath = MakeGlossary(folder,
+                    ("APNS", "滝本", "타키모토", 0),
+                    ("APNS", "滝本さん", "타키모토 씨", 0),
+                    ("APNS", "滝本先生", "타키모토 씨", 0),
+                    ("APNS", "Takimoto", "타키모토", 0),
+                    ("APNS", "たぎもつさん", "타키모토 씨", 0),
+                    ("APNS", "タキモス", "타키모스", 0)),
+            };
+
+            var ranked = JavTerms.RankSpellings("APNS", ["타키모스 씨", "타키모토 씨"]);
+
+            Assert.Equal(2, ranked.Count);
+            Assert.Equal("타키모토 씨", ranked[0].Spelling);
+            Assert.Equal(5, ranked[0].Rows);
+            Assert.Equal("타키모스 씨", ranked[1].Spelling);
+            Assert.Equal(1, ranked[1].Rows);
+        }
+        finally
+        {
+            Se.Settings.JavData = saved;
+            Cleanup(folder);
+        }
+    }
+
+    // ★A pinned row wins outright rather than by count - one person's decision outranks any number of
+    //   harvested rows, which is the same rule the translator's own pinned column enforces.
+    [Fact]
+    public void RankSpellings_PutsAPinnedSpellingFirstEvenWhenOutnumbered()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "terms-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var saved = Se.Settings.JavData;
+        try
+        {
+            Se.Settings.JavData = new SeJavData
+            {
+                TermsDbPath = MakeGlossary(folder,
+                    ("APNS", "Hinokori-san", "히노코리 씨", 0),
+                    ("APNS", "Hinokori", "히노코리", 0),
+                    ("APNS", "Hinokori2", "히노코리", 0),
+                    ("APNS", "ひのぼりさん", "히노보리 씨", 1)),
+            };
+
+            var ranked = JavTerms.RankSpellings("APNS", ["히노코리 씨", "히노보리 씨"]);
+
+            Assert.Equal("히노보리 씨", ranked[0].Spelling);
+            Assert.True(ranked[0].Pinned);
+            Assert.Equal(1, ranked[0].Rows);
+            Assert.Equal(3, ranked[1].Rows);
+        }
+        finally
+        {
+            Se.Settings.JavData = saved;
+            Cleanup(folder);
+        }
+    }
+
+    // ★No opinion is the common case, and it must read as "no opinion" rather than "all wrong".
+    [Fact]
+    public void RankSpellings_IsEmptyWhenTheGlossaryKnowsNeither()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "terms-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var saved = Se.Settings.JavData;
+        try
+        {
+            Se.Settings.JavData = new SeJavData
+            {
+                TermsDbPath = MakeGlossary(folder, ("APNS", "佐々木さん", "사사키 씨", 0)),
+            };
+
+            Assert.Empty(JavTerms.RankSpellings("APNS", ["타키모스 씨", "타키모토 씨"]));
+            Assert.Empty(JavTerms.RankSpellings("", ["사사키 씨"]));
+            Assert.Empty(JavTerms.RankSpellings("APNS", []));
+        }
+        finally
+        {
+            Se.Settings.JavData = saved;
+            Cleanup(folder);
+        }
+    }
+
     [Fact]
     public void Pin_RefusesWhenTheGlossaryIsNotThere()
     {

@@ -305,6 +305,7 @@ rather than re-deriving anything.
 | 6 | `Features/Tools/NameCheck/` — the LLM name-consistency pass; menu inventory **145 → 146** |
 | 7 | `Features/Tools/NameCheck/OriginalDialogue.cs` — reads the film's own original-language subtitle so a name fix can be pinned at all, and gates pinning on what it says |
 | 8 | The second pass moved ahead of the substitution and can now **reverse** a finding's direction, because the first pass gets it backwards often enough to matter |
+| 9 | `JavTerms.RankSpellings` — the series' own glossary is asked **before** any model, and settles the case the model and the original-language subtitle both got wrong |
 
 Hard-won facts — do not re-derive:
 
@@ -339,6 +340,13 @@ Hard-won facts — do not re-derive:
   98% and only lets wrong lines match. A subtitle does not record which file it was translated from,
   so the match rate itself is the test of whether the right file was picked: real sources score
   61-100%, wrong cuts 1-11%.
+- **When two sources disagree about a name, the glossary has usually already settled it — for free.**
+  Measured on the case the model and the original subtitle both got wrong: the APNS layer held `滝本`
+  / `滝本さん` / `滝本先生` / `Takimoto` / `たぎもつさん` all reading 타키모토, five rows against one
+  for the mis-hearing 타키모스 — and the real name was neither of the two spellings the *subtitles*
+  contained (`宅本` appears in the glossary zero times). Ask the recorded data before asking a model:
+  `JavTerms.RankSpellings` got 4 of 4 measured cases right, including correctly declining to act on
+  the two where only one candidate was known. It costs one query.
 - **An original-language subtitle is not ground truth — it is usually machine-transcribed too.**
   Measured: on one film the Japanese subtitle spelled the same person both `宅本` (the name) and
   `タキモス` (a mis-hearing), the mis-hearing **more often**, and the check confirmed the mis-hearing

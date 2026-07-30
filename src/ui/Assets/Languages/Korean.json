@@ -1416,6 +1416,7 @@
       "notAPerson": "원문에서 사람 이름이 아니라 파일만 고칩니다",
       "spellingDoubted": "원문 발음과 다릅니다 — 적용 전에 확인하세요",
       "directionCorrected": "방향을 뒤집었습니다 — 원문은 반대쪽 표기를 지지합니다",
+      "glossaryCorrected": "방향을 뒤집었습니다 — 이 시리즈는 이미 반대쪽 표기를 씁니다",
       "editPromptTitle": "이름 검사 프롬프트 편집",
       "promptInfo": "모델에 보내는 지시문입니다. {language}는 자막 언어로 바뀝니다. 음차 규칙과 응답 형식은 항상 뒤에 붙으며 지울 수 없습니다."
     },
