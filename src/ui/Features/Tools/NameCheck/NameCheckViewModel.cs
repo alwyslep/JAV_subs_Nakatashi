@@ -85,6 +85,13 @@ public partial class NameCheckViewModel : ObservableObject
     /// </summary>
     private readonly HashSet<string> _spellingDoubted = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Names whose direction the original language reversed - the first pass had the mistake and the
+    /// fix the wrong way round, and this is the corrected pair. Recorded so the row can say so: the
+    /// user is being shown a suggestion that is the opposite of what the model first proposed.
+    /// </summary>
+    private readonly HashSet<string> _directionCorrected = new(StringComparer.Ordinal);
+
     private Subtitle _subtitle = new();
     private string _languageCode = "ko";
     private string _seriesPrefix = string.Empty;
@@ -255,18 +262,17 @@ public partial class NameCheckViewModel : ObservableObject
             using var client = new AiReviewClient();
             var reply = await client.ChatAsync(url, model, systemPrompt, userContent, ct, apiKey);
             var findings = NameCheckProtocol.ParseNames(reply);
-            var replacements = NameCheckProtocol.BuildReplacements(_subtitle, findings);
 
-            // ★The second pass runs before the rows are built, so each row's reason already reflects
-            //   what the original language said. Only what survived into a replacement is asked about -
-            //   a finding that changes no line is never pinned either.
-            var resolved = await ResolveOriginalFormsAsync(findings, replacements, url, model, apiKey, ct);
+            // ★The second pass runs BEFORE the substitution is worked out, because it can reverse a
+            //   finding's direction - and a replacement built from the wrong direction would have to be
+            //   thrown away and rebuilt. It also means the model is shown the file's real lines rather
+            //   than lines this tool has already corrected, which is what it needs to judge them.
+            var resolved = await ResolveOriginalFormsAsync(findings, url, model, apiKey, ct);
+            var replacements = NameCheckProtocol.BuildReplacements(_subtitle, resolved);
 
             foreach (var replacement in replacements)
             {
-                var finding = resolved.TryGetValue(replacement.Finding.Korean, out var updated)
-                    ? updated
-                    : replacement.Finding;
+                var finding = replacement.Finding;
                 var item = new ReviewSuggestionItem
                 {
                     Number = replacement.Number,
@@ -333,54 +339,70 @@ public partial class NameCheckViewModel : ObservableObject
     /// original-language subtitle, a refused one, an unparsable reply or a dropped connection all leave
     /// the findings exactly as the first pass produced them.
     /// </summary>
-    private async Task<Dictionary<string, NameFinding>> ResolveOriginalFormsAsync(
-        IReadOnlyList<NameFinding> findings, IReadOnlyList<NameReplacement> replacements,
-        string url, string model, string? apiKey, CancellationToken ct)
+    private async Task<List<NameFinding>> ResolveOriginalFormsAsync(
+        IReadOnlyList<NameFinding> findings, string url, string model, string? apiKey, CancellationToken ct)
     {
-        var resolved = new Dictionary<string, NameFinding>(StringComparer.Ordinal);
-        foreach (var finding in findings)
-        {
-            resolved[finding.Korean] = finding;
-        }
-
-        if (_originalDialogue == null || replacements.Count == 0)
+        var resolved = findings.ToList();
+        if (_originalDialogue == null || resolved.Count == 0)
         {
             return resolved;
         }
 
-        var linesByName = new Dictionary<string, List<(string Translated, string Original)>>(StringComparer.Ordinal);
-        foreach (var replacement in replacements)
+        var questions = new List<OriginalFormQuestion>();
+        foreach (var finding in resolved.Take(NameCheckProtocol.MaxOriginalFormQuestions))
         {
-            var original = _originalDialogue.TextAt(
-                replacement.ParagraphIndex >= 0 && replacement.ParagraphIndex < _subtitle.Paragraphs.Count
-                    ? _subtitle.Paragraphs[replacement.ParagraphIndex]
-                    : null);
-            if (original.Length == 0)
+            var spellings = new List<string> { finding.Korean };
+            spellings.AddRange(finding.Wrong);
+
+            // ★One line per spelling, round-robin - NOT the first few lines in file order. Measured, and
+            //   it decides the answer: on APNS-372 the original spells one name both 宅本 (the real
+            //   name) and タキモス (the ASR mangling it). Taking the first three matching lines showed
+            //   only the タキモス ones, so the model confirmed the mangled reading and the tool went on to
+            //   write it over the correct 타키모토. Shown a line for each spelling, it sees both and can
+            //   tell which reading the original actually supports.
+            var lines = new List<(string Translated, string Original)>();
+            var byspelling = spellings
+                .Select(spelling => LinesFor(spelling).GetEnumerator())
+                .ToList();
+            try
             {
-                continue;
+                var exhausted = false;
+                while (lines.Count < NameCheckProtocol.MaxLinesPerQuestion && !exhausted)
+                {
+                    exhausted = true;
+                    foreach (var source in byspelling)
+                    {
+                        if (lines.Count >= NameCheckProtocol.MaxLinesPerQuestion || !source.MoveNext())
+                        {
+                            continue;
+                        }
+
+                        exhausted = false;
+                        if (!lines.Contains(source.Current))
+                        {
+                            lines.Add(source.Current);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                foreach (var source in byspelling)
+                {
+                    source.Dispose();
+                }
             }
 
-            if (!linesByName.TryGetValue(replacement.Finding.Korean, out var lines))
+            if (lines.Count > 0)
             {
-                lines = new List<(string, string)>();
-                linesByName[replacement.Finding.Korean] = lines;
-            }
-
-            if (lines.Count < NameCheckProtocol.MaxLinesPerQuestion)
-            {
-                lines.Add((replacement.After.Replace(Environment.NewLine, " "), original));
+                questions.Add(new OriginalFormQuestion(finding.Korean, finding.Wrong, lines));
             }
         }
 
-        if (linesByName.Count == 0)
+        if (questions.Count == 0)
         {
             return resolved;
         }
-
-        var questions = linesByName
-            .Select(kvp => new OriginalFormQuestion(kvp.Key, kvp.Value))
-            .Take(NameCheckProtocol.MaxOriginalFormQuestions)
-            .ToList();
 
         StatusText = Se.Language.Tools.NameCheck.CheckingOriginal;
         string answer;
@@ -403,28 +425,63 @@ public partial class NameCheckViewModel : ObservableObject
         }
 
         var forms = NameCheckProtocol.ParseOriginalForms(answer ?? string.Empty);
-        foreach (var question in questions)
+        for (var i = 0; i < resolved.Count; i++)
         {
-            if (!forms.TryGetValue(question.Korean, out var form) ||
-                !resolved.TryGetValue(question.Korean, out var finding))
+            var finding = resolved[i];
+            var question = questions.FirstOrDefault(q => q.Korean == finding.Korean);
+            if (question == null || !forms.TryGetValue(finding.Korean, out var form))
             {
                 continue;
             }
 
-            resolved[question.Korean] = NameCheckProtocol.WithOriginalForm(
+            var updated = NameCheckProtocol.WithOriginalForm(
                 finding, form, question.Lines.Select(l => l.Original));
-            if (!form.IsName)
-            {
-                _notAPerson.Add(question.Korean);
-            }
 
             if (!form.ChosenSpellingFits)
             {
-                _spellingDoubted.Add(question.Korean);
+                // ★The original settled it, so apply the fix in the right direction rather than
+                //   refusing to apply it. Only when the swap is not usable does the row fall back to
+                //   being shown, explained and left unchecked.
+                var swapped = NameCheckProtocol.SwapDirection(updated, form.Better);
+                if (swapped != null)
+                {
+                    updated = swapped;
+                    _directionCorrected.Add(updated.Korean);
+                }
+                else
+                {
+                    _spellingDoubted.Add(updated.Korean);
+                }
             }
+
+            if (!form.IsName)
+            {
+                _notAPerson.Add(updated.Korean);
+            }
+
+            resolved[i] = updated;
         }
 
         return resolved;
+    }
+
+    /// <summary>Lines containing one spelling, each paired with the original-language line.</summary>
+    private IEnumerable<(string Translated, string Original)> LinesFor(string spelling)
+    {
+        foreach (var paragraph in _subtitle.Paragraphs)
+        {
+            var text = paragraph.Text ?? string.Empty;
+            if (text.Length == 0 || !text.Contains(spelling, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var original = _originalDialogue!.TextAt(paragraph);
+            if (original.Length > 0)
+            {
+                yield return (text.Replace(Environment.NewLine, " "), original);
+            }
+        }
     }
 
     /// <summary>★Says outright when a fix cannot be remembered, so "remember these" is never a
@@ -436,6 +493,11 @@ public partial class NameCheckViewModel : ObservableObject
         if (finding.Source.Length > 0)
         {
             reason = finding.Source + " -> " + finding.Korean + (reason.Length > 0 ? " - " + reason : string.Empty);
+        }
+
+        if (_directionCorrected.Contains(finding.Korean))
+        {
+            reason = (reason + " (" + ln.DirectionCorrected + ")").Trim();
         }
 
         if (_spellingDoubted.Contains(finding.Korean))
@@ -565,6 +627,7 @@ public partial class NameCheckViewModel : ObservableObject
         _findingByIndex.Clear();
         _notAPerson.Clear();
         _spellingDoubted.Clear();
+        _directionCorrected.Clear();
         Suggestions.Clear();
         UpdateSummary();
     }

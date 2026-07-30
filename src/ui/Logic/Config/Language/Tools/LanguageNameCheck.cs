@@ -19,6 +19,7 @@ public class LanguageNameCheck
     public string NotPinnable { get; set; }
     public string NotAPerson { get; set; }
     public string SpellingDoubted { get; set; }
+    public string DirectionCorrected { get; set; }
     public string EditPromptTitle { get; set; }
     public string PromptInfo { get; set; }
 
@@ -41,6 +42,7 @@ public class LanguageNameCheck
         NotPinnable = "original form unknown - fixes the file only";
         NotAPerson = "not a person in the original - fixes the file only";
         SpellingDoubted = "the original does not sound like this - check before applying";
+        DirectionCorrected = "reversed: the original supports the other spelling";
         EditPromptTitle = "Edit name-check prompt";
         PromptInfo =
             "Instructions sent to the model. {language} is replaced with the subtitle language. " +

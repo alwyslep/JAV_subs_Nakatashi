@@ -71,7 +71,9 @@ cannot teach the glossary as often.
 - Only names whose **original form is known** can be saved. When it is not known, the row says *"original form unknown — fixes the file only"* rather than quietly not saving.
 - A source form that is already in Hangul is refused: it went through a machine translation, so it is not the original spelling of anything.
 - **A name the original says is not a person is not saved** — the line is still fixed, and the row says *"not a person in the original"*.
-- **A spelling the original contradicts is not saved either**, and that row starts **unchecked** with *"the original does not sound like this — check before applying"*. Measured: on one film both findings had the direction reversed — the pass offered 히노코리 씨 as correct and 히노보리 씨 as the mistake, while the original said ひのぼり. The pass is still right that the file spells one person two ways; which way is right is worth your eye.
+- **When the original contradicts the chosen spelling, the suggestion is turned round.** Measured: the pass offered 히노코리 씨 as correct with 히노보리 씨 as the mistake, while the original said ひのぼり — so the fix is applied the other way instead, and the row says *"reversed: the original supports the other spelling"*. When the reversal is not usable, the row is shown, explained and left **unchecked** rather than applied.
+
+> **A limit worth knowing.** The original-language subtitle is itself usually machine-transcribed, so it can be wrong too. On one measured film it spelled the same person both 宅本 (the name) and タキモス (a mis-hearing), the mis-hearing more often — and the check confirmed the mis-hearing. Read a reversal as a strong hint, not a verdict.
 - Pinned rows are protected on the translator side — its re-harvest and its clean-up pass both skip them, so a machine cannot overwrite a spelling a person chose.
 
 ## How often it finds something

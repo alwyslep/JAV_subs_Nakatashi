@@ -233,7 +233,7 @@ public class NameCheckProtocolTests
     // ─── The second pass: what the original language calls this person ────────────────────────────
 
     private static OriginalFormQuestion Question(string korean, params (string Translated, string Original)[] lines)
-        => new(korean, lines);
+        => new(korean, [], lines);
 
     [Fact]
     public void BuildOriginalFormRequest_PairsEachLineWithItsOriginal()
@@ -323,9 +323,9 @@ public class NameCheckProtocolTests
         var finding = Finding(string.Empty, "유미카", "유미코");
 
         var kept = NameCheckProtocol.WithOriginalForm(
-            finding, new OriginalForm("由美香", true, true), ["由美香さんですね"]);
+            finding, new OriginalForm("由美香", true, true, ""), ["由美香さんですね"]);
         var refused = NameCheckProtocol.WithOriginalForm(
-            finding, new OriginalForm("Yumika", true, true), ["由美香さんですね"]);
+            finding, new OriginalForm("Yumika", true, true, ""), ["由美香さんですね"]);
 
         Assert.Equal("由美香", kept.Source);
         Assert.Equal(string.Empty, refused.Source);
@@ -336,7 +336,7 @@ public class NameCheckProtocolTests
     {
         var finding = Finding("由美香", "유미카", "유미코");
 
-        var same = NameCheckProtocol.WithOriginalForm(finding, new OriginalForm(string.Empty, true, true), ["由美香"]);
+        var same = NameCheckProtocol.WithOriginalForm(finding, new OriginalForm(string.Empty, true, true, ""), ["由美香"]);
 
         Assert.Equal("由美香", same.Source);
     }
@@ -351,9 +351,140 @@ public class NameCheckProtocolTests
         var finding = Finding("由美香", "유미카", "유미코");
 
         var kept = NameCheckProtocol.WithOriginalForm(
-            finding, new OriginalForm("希米卡", true, true), ["哦希米卡"]);
+            finding, new OriginalForm("希米卡", true, true, ""), ["哦希米卡"]);
 
         Assert.Equal("由美香", kept.Source);
+    }
+
+    // ─── Reversing a finding the original contradicts ─────────────────────────────────────────────
+
+    // ★The measured case, twice on one film: the first pass offered 히노코리 씨 as correct with
+    //   히노보리 씨 as the mistake, while the original said ひのぼり. Once the original has settled it,
+    //   applying the fix the right way round beats refusing to apply it.
+    [Fact]
+    public void SwapDirection_TurnsTheFindingRound()
+    {
+        var finding = Finding("ひのぼり", "히노코리 씨", "히노보리 씨");
+
+        var swapped = NameCheckProtocol.SwapDirection(finding, "히노보리 씨");
+
+        Assert.NotNull(swapped);
+        Assert.Equal("히노보리 씨", swapped!.Korean);
+        Assert.Equal(["히노코리 씨"], swapped.Wrong);
+        Assert.Equal("ひのぼり", swapped.Source);
+    }
+
+    [Fact]
+    public void SwapDirection_KeepsTheOtherMistakes()
+    {
+        var finding = Finding("宅本", "타키모스 씨", "타키모토 씨", "타끼모토 씨");
+
+        var swapped = NameCheckProtocol.SwapDirection(finding, "타키모토 씨");
+
+        Assert.Equal("타키모토 씨", swapped!.Korean);
+        Assert.Equal(["타끼모토 씨", "타키모스 씨"], swapped.Wrong);
+    }
+
+    // ★The second pass chooses between spellings the file actually contains. An invented one would
+    //   match no line and quietly do nothing - or match the wrong one.
+    [Theory]
+    [InlineData("존재하지않는표기")]   // not in the reported list
+    [InlineData("히노코리 씨")]        // the chosen spelling itself
+    [InlineData("")]
+    [InlineData(null)]
+    public void SwapDirection_RefusesAnythingNotAmongTheReportedSpellings(string? better)
+    {
+        Assert.Null(NameCheckProtocol.SwapDirection(Finding("ひのぼり", "히노코리 씨", "히노보리 씨"), better));
+    }
+
+    // ★A reversed pair goes through exactly the same rules as an original one - that is why they share
+    //   MakeFinding. Here the reversal would leave 미루짱 replacing a full name, which drops the
+    //   honorific, so nothing survives and the swap is refused rather than applied badly.
+    [Fact]
+    public void SwapDirection_RefusesASwapThatBreaksTheFormOfAddress()
+    {
+        var finding = Finding("坂道みる", "미루짱", "사카미치 미루");
+
+        Assert.Null(NameCheckProtocol.SwapDirection(finding, "사카미치 미루"));
+    }
+
+    [Fact]
+    public void ParseOriginalForms_IgnoresBetterWhenTheSpellingWasAccepted()
+    {
+        // ★A stray "better" must not reverse a finding nobody objected to.
+        var forms = NameCheckProtocol.ParseOriginalForms(
+            """{"names":[{"ko":"유미카","src":"由美香","isName":true,"fits":true,"better":"유미코"}]}""");
+
+        Assert.Equal(string.Empty, forms["유미카"].Better);
+    }
+
+    [Fact]
+    public void ParseOriginalForms_KeepsBetterWhenTheSpellingWasRejected()
+    {
+        var forms = NameCheckProtocol.ParseOriginalForms(
+            """{"names":[{"ko":"히노코리 씨","src":"ひのぼり","isName":true,"fits":false,"better":"히노보리 씨"}]}""");
+
+        Assert.Equal("히노보리 씨", forms["히노코리 씨"].Better);
+    }
+
+    [Fact]
+    public void MakeFinding_IsTheOneRuleBothDirectionsGoThrough()
+    {
+        // Nothing survives: 사카미치 and 미루 are contained in the chosen name.
+        Assert.Null(NameCheckProtocol.MakeFinding("坂道みる", "사카미치 미루", ["사카미치", "미루"], "r"));
+        // Duplicates collapse, order is kept.
+        var made = NameCheckProtocol.MakeFinding("x", "사사키 씨", ["사사끼 씨", "사사끼 씨", "사사키상"], "r");
+        Assert.Equal(["사사끼 씨", "사사키상"], made!.Wrong);
+        Assert.Null(NameCheckProtocol.MakeFinding("x", string.Empty, ["y"], "r"));
+    }
+
+    // ★The model is told to copy the original verbatim and it does - the live run returned
+    //   ひのぼりさん! with the exclamation mark, because that is how the line ended. That mark would
+    //   become part of the glossary key and never match anything again.
+    [Theory]
+    [InlineData("ひのぼりさん!", "ひのぼりさん")]
+    [InlineData("（宅本）", "宅本")]
+    [InlineData("「佐々木さん」、", "佐々木さん")]
+    [InlineData("  Hinokori-san.  ", "Hinokori-san")]
+    [InlineData("!!!", "")]
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void TrimPunctuation_KeepsTheNameAndDropsTheRest(string? value, string expected)
+    {
+        Assert.Equal(expected, NameCheckProtocol.TrimPunctuation(value));
+    }
+
+    [Fact]
+    public void WithOriginalForm_StripsPunctuationOffACopiedSource()
+    {
+        var updated = NameCheckProtocol.WithOriginalForm(
+            Finding(string.Empty, "히노보리 씨", "히노코리 씨"),
+            new OriginalForm("ひのぼりさん!", true, true, ""), ["ひのぼりさん!"]);
+
+        Assert.Equal("ひのぼりさん", updated.Source);
+    }
+
+    // ★"Never replace a known source" has one exception, and the live run found it: when the second
+    //   pass REJECTS the chosen spelling, the first pass's source is discredited too. It answered
+    //   src=Hinokori-san for a reading the original contradicts.
+    [Fact]
+    public void WithOriginalForm_ReplacesADiscreditedSourceWhenTheSpellingWasRejected()
+    {
+        var finding = Finding("Hinokori-san", "히노코리 씨", "히노보리 씨");
+
+        var updated = NameCheckProtocol.WithOriginalForm(
+            finding, new OriginalForm("ひのぼりさん", true, false, "히노보리 씨"), ["ひのぼりさん!"]);
+
+        Assert.Equal("ひのぼりさん", updated.Source);
+    }
+
+    [Fact]
+    public void BuildOriginalFormRequest_ListsTheOtherSpellingsToChooseFrom()
+    {
+        var request = NameCheckProtocol.BuildOriginalFormRequest(
+            [new OriginalFormQuestion("히노코리 씨", ["히노보리 씨"], [("히노코리 씨!", "ひのぼりさん!")])]);
+
+        Assert.Contains("other spellings of it in the file: 히노보리 씨", request);
     }
 
     // A source filled in by the second pass has to survive the pin gate too - the Hangul rule is not
@@ -362,7 +493,7 @@ public class NameCheckProtocolTests
     public void CanPin_StillRejectsAHangulSourceAfterTheSecondPass()
     {
         var finding = NameCheckProtocol.WithOriginalForm(
-            Finding(string.Empty, "유미카", "유미코"), new OriginalForm("유미카씨", true, true), ["유미카씨"]);
+            Finding(string.Empty, "유미카", "유미코"), new OriginalForm("유미카씨", true, true, ""), ["유미카씨"]);
 
         Assert.Equal("유미카씨", finding.Source);
         Assert.False(NameCheckProtocol.CanPin(finding));

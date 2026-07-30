@@ -304,6 +304,7 @@ rather than re-deriving anything.
 | 5 | Deterministic name back-check — **built, measured, and abandoned**; 5′ injected settled spellings into AI review instead |
 | 6 | `Features/Tools/NameCheck/` — the LLM name-consistency pass; menu inventory **145 → 146** |
 | 7 | `Features/Tools/NameCheck/OriginalDialogue.cs` — reads the film's own original-language subtitle so a name fix can be pinned at all, and gates pinning on what it says |
+| 8 | The second pass moved ahead of the substitution and can now **reverse** a finding's direction, because the first pass gets it backwards often enough to matter |
 
 Hard-won facts — do not re-derive:
 
@@ -338,6 +339,17 @@ Hard-won facts — do not re-derive:
   98% and only lets wrong lines match. A subtitle does not record which file it was translated from,
   so the match rate itself is the test of whether the right file was picked: real sources score
   61-100%, wrong cuts 1-11%.
+- **An original-language subtitle is not ground truth — it is usually machine-transcribed too.**
+  Measured: on one film the Japanese subtitle spelled the same person both `宅本` (the name) and
+  `タキモス` (a mis-hearing), the mis-hearing **more often**, and the check confirmed the mis-hearing
+  even after being shown both. Round-robin line sampling (one line per spelling, not the first three
+  in file order) fixed what the model *sees* and did not fix what it *concludes*. Do not build
+  anything that treats the original as decisive.
+- **Two rules that look redundant and are not:** the second pass may not replace a source the first
+  pass knew (`由美香` vs a Chinese `希米卡`) **except** when it rejects the chosen spelling — then the
+  first pass's source is discredited too (it answered `Hinokori-san`, a romanisation of the wrong
+  reading). And a source copied "verbatim" arrives with punctuation attached (`ひのぼりさん!`), which
+  would become part of the glossary key.
 - **Stage 7 is a correctness feature, not a productivity one, and the docs say so.** Filling in the
   original form removed the accident that had been protecting the glossary (an empty source), so the
   same call that fills it is asked to classify too. Two runs over the same 8 films gave 3 pinnable

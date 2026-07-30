@@ -16,13 +16,19 @@ public sealed record NameReplacement(int ParagraphIndex, int Number, string Befo
 
 /// <summary>
 /// What the second pass says about one name once it has seen the original-language line: how the
-/// original spells it, whether it is a name at all, and whether the spelling the first pass chose is
-/// a faithful reading of that original.
+/// original spells it, whether it is a name at all, whether the spelling the first pass chose is a
+/// faithful reading of that original, and - when it is not - which spelling from the file is.
 /// </summary>
-public sealed record OriginalForm(string Source, bool IsName, bool ChosenSpellingFits);
+public sealed record OriginalForm(string Source, bool IsName, bool ChosenSpellingFits, string Better);
 
-/// <summary>One name, with the lines that mention it in both languages, for the second pass.</summary>
-public sealed record OriginalFormQuestion(string Korean, IReadOnlyList<(string Translated, string Original)> Lines);
+/// <summary>
+/// One name for the second pass: the spelling the first pass chose, the other spellings it found in
+/// the file, and lines mentioning any of them next to the original-language line.
+/// </summary>
+public sealed record OriginalFormQuestion(
+    string Korean,
+    IReadOnlyList<string> Alternatives,
+    IReadOnlyList<(string Translated, string Original)> Lines);
 
 /// <summary>
 /// Fork addition. The wire format for the name pass.
@@ -142,52 +148,101 @@ public static class NameCheckProtocol
             }
 
             var korean = ReadString(element, "ko");
-            if (korean.Length == 0)
-            {
-                continue;
-            }
-
-            var wrong = new List<string>();
+            var candidates = new List<string>();
             if (element.TryGetProperty("wrong", out var wrongArray) && wrongArray.ValueKind == JsonValueKind.Array)
             {
                 foreach (var item in wrongArray.EnumerateArray())
                 {
-                    if (item.ValueKind != JsonValueKind.String)
+                    if (item.ValueKind == JsonValueKind.String)
                     {
-                        continue;
-                    }
-
-                    var value = (item.GetString() ?? string.Empty).Trim();
-                    // ★Dropping the chosen spelling out of its own "wrong" list is not pedantry:
-                    //   left in, the replacement is a no-op that still shows as a suggestion, and the
-                    //   user is asked to approve a change that changes nothing.
-                    //
-                    // ★And dropping anything CONTAINED IN the chosen spelling is what stops the text
-                    //   being destroyed. Measured: the model proposed 사카미치 미루 as canonical with
-                    //   사카미치 and 미루 among the wrong spellings. Replacing a string with something
-                    //   that contains it feeds itself - one line came back as
-                    //   "사카미치 사카미치 미루 사카미치 미루". It is also never a real finding: a
-                    //   shorter form of the same name is an abbreviation, not a misspelling.
-                    if (value.Length > 0 &&
-                        !string.Equals(value, korean, StringComparison.Ordinal) &&
-                        !korean.Contains(value, StringComparison.Ordinal) &&
-                        KeepsFormOfAddress(value, korean) &&
-                        !wrong.Contains(value))
-                    {
-                        wrong.Add(value);
+                        candidates.Add(item.GetString() ?? string.Empty);
                     }
                 }
             }
 
-            if (wrong.Count == 0)
+            var finding = MakeFinding(ReadString(element, "src"), korean, candidates, ReadString(element, "reason"));
+            if (finding != null)
             {
-                continue;
+                findings.Add(finding);
             }
-
-            findings.Add(new NameFinding(ReadString(element, "src"), korean, wrong, ReadString(element, "reason")));
         }
 
         return findings;
+    }
+
+    /// <summary>
+    /// One finding, with the rules about what may be replaced applied. Returns null when nothing
+    /// survives them - which is a finding that would change nothing, or would damage the text.
+    ///
+    /// ★This is the single place those rules live, because the direction of a finding can be reversed
+    ///   later (see <see cref="SwapDirection"/>) and a reversed pair has to pass exactly the same
+    ///   rules. Two copies of this would drift, and the copy that drifted would be the one writing to
+    ///   the file.
+    ///
+    /// ★Dropping the chosen spelling out of its own "wrong" list is not pedantry: left in, the
+    ///   replacement is a no-op that still shows as a suggestion, and the user is asked to approve a
+    ///   change that changes nothing.
+    ///
+    /// ★Dropping anything CONTAINED IN the chosen spelling is what stops the text being destroyed.
+    ///   Measured: the model proposed 사카미치 미루 as canonical with 사카미치 and 미루 among the wrong
+    ///   spellings. Replacing a string with something that contains it feeds itself - one line came
+    ///   back as "사카미치 사카미치 미루 사카미치 미루". It is also never a real finding: a shorter form
+    ///   of the same name is an abbreviation, not a misspelling.
+    /// </summary>
+    public static NameFinding? MakeFinding(
+        string source, string korean, IEnumerable<string> wrongCandidates, string reason)
+    {
+        if (korean.Length == 0)
+        {
+            return null;
+        }
+
+        var wrong = new List<string>();
+        foreach (var candidate in wrongCandidates)
+        {
+            var value = (candidate ?? string.Empty).Trim();
+            if (value.Length > 0 &&
+                !string.Equals(value, korean, StringComparison.Ordinal) &&
+                !korean.Contains(value, StringComparison.Ordinal) &&
+                KeepsFormOfAddress(value, korean) &&
+                !wrong.Contains(value))
+            {
+                wrong.Add(value);
+            }
+        }
+
+        return wrong.Count == 0 ? null : new NameFinding(source, korean, wrong, reason);
+    }
+
+    /// <summary>
+    /// Turns the finding round: <paramref name="better"/> becomes the spelling to use and the one the
+    /// first pass chose joins the list of mistakes. Returns null when the swap is not usable.
+    ///
+    /// ★Why this exists: measured, the first pass gets the direction BACKWARDS often enough to matter.
+    ///   On APNS-372 both of its findings did - 히노코리 씨 offered as correct with 히노보리 씨 as the
+    ///   mistake while the original said ひのぼり, and 타키모스 씨 over 타키모토 씨 while the original
+    ///   said 宅本. The original-language line settles it, and once it has, applying the fix in the
+    ///   right direction is strictly better than refusing to apply it at all.
+    ///
+    /// ★<paramref name="better"/> must be one of the spellings the first pass actually reported. The
+    ///   second pass is choosing between spellings that exist in the file, not inventing one - an
+    ///   invented spelling would match no line and quietly do nothing, or worse, match the wrong one.
+    /// </summary>
+    public static NameFinding? SwapDirection(NameFinding finding, string? better)
+    {
+        var chosen = (better ?? string.Empty).Trim();
+        if (chosen.Length == 0 ||
+            string.Equals(chosen, finding.Korean, StringComparison.Ordinal) ||
+            !finding.Wrong.Contains(chosen, StringComparer.Ordinal))
+        {
+            return null;
+        }
+
+        var candidates = finding.Wrong
+            .Where(w => !string.Equals(w, chosen, StringComparison.Ordinal))
+            .Append(finding.Korean);
+
+        return MakeFinding(finding.Source, chosen, candidates, finding.Reason);
     }
 
     /// <summary>
@@ -286,11 +341,14 @@ public static class NameCheckProtocol
         "line is here to settle.\n" +
         "3. \"fits\" - whether the name you were given is a faithful reading of the original: does it " +
         "sound like the original, syllable for syllable? Answer false when it does not, even slightly. " +
-        "ひのぼり read as 히노코리 is false; ひのぼり read as 히노보리 is true. You are not being asked " +
-        "for a better spelling - only whether this one matches what the original says.\n\n" +
+        "ひのぼり read as 히노코리 is false; ひのぼり read as 히노보리 is true.\n" +
+        "4. \"better\" - ONLY when \"fits\" is false: which of the other spellings listed for that name " +
+        "is a faithful reading of the original? Copy it exactly from the list you were given. If none " +
+        "of them is, leave it empty. Never write a spelling that is not in the list - you are choosing " +
+        "between the spellings the file actually contains, not proposing a new one.\n\n" +
         "Answer with ONLY a JSON object, no other text: " +
         "{\"names\":[{\"ko\":\"<the name as given to you, copied exactly>\",\"src\":\"<original form or " +
-        "empty>\",\"isName\":true,\"fits\":true}]}. Include every name you were asked about.";
+        "empty>\",\"isName\":true,\"fits\":true,\"better\":\"\"}]}. Include every name you were asked about.";
 
     public static string BuildOriginalFormRequest(IReadOnlyList<OriginalFormQuestion> questions)
     {
@@ -298,6 +356,12 @@ public static class NameCheckProtocol
         foreach (var question in questions.Take(MaxOriginalFormQuestions))
         {
             sb.Append("NAME: ").Append(question.Korean).Append('\n');
+            if (question.Alternatives.Count > 0)
+            {
+                sb.Append("  other spellings of it in the file: ")
+                  .Append(string.Join(", ", question.Alternatives)).Append('\n');
+            }
+
             foreach (var (translated, original) in question.Lines.Take(MaxLinesPerQuestion))
             {
                 sb.Append("  translated: ").Append(translated).Append('\n');
@@ -352,7 +416,10 @@ public static class NameCheckProtocol
             //   would unselect good suggestions every time a model skipped the key.
             var isName = element.TryGetProperty("isName", out var flag) && flag.ValueKind == JsonValueKind.True;
             var fits = !element.TryGetProperty("fits", out var fitsFlag) || fitsFlag.ValueKind != JsonValueKind.False;
-            result[korean] = new OriginalForm(ReadString(element, "src"), isName, fits);
+            // ★"better" only means anything when the chosen spelling was rejected. Honouring it while
+            //   "fits" is true would let a stray field reverse a finding nobody objected to.
+            var better = fits ? string.Empty : ReadString(element, "better");
+            result[korean] = new OriginalForm(ReadString(element, "src"), isName, fits, better);
         }
 
         return result;
@@ -373,20 +440,56 @@ public static class NameCheckProtocol
     /// </summary>
     public static NameFinding WithOriginalForm(NameFinding finding, OriginalForm form, IEnumerable<string> originalLines)
     {
-        if (form.Source.Length == 0 || finding.Source.Length > 0)
+        var source = TrimPunctuation(form.Source);
+        if (source.Length == 0)
+        {
+            return finding;
+        }
+
+        // ★"Never replace a known source" has ONE exception, and the live run found it: when the second
+        //   pass REJECTS the chosen spelling, the first pass's source is discredited too. Measured, the
+        //   first pass answered src=Hinokori-san for a reading the original contradicts - a romanisation
+        //   of the wrong reading. Keeping it while reversing the spelling would key the glossary on a
+        //   spelling of a name nobody uses. When the first pass was right about the reading, its source
+        //   still wins (that is the 由美香 / 希米卡 case).
+        if (finding.Source.Length > 0 && form.ChosenSpellingFits)
         {
             return finding;
         }
 
         foreach (var line in originalLines)
         {
-            if (line.Contains(form.Source, StringComparison.Ordinal))
+            if (line.Contains(source, StringComparison.Ordinal))
             {
-                return finding with { Source = form.Source };
+                return finding with { Source = source };
             }
         }
 
         return finding;
+    }
+
+    /// <summary>
+    /// ★Strips punctuation off the ends of a copied-out source. The model is told to copy verbatim and
+    ///   it does - the live run returned <c>ひのぼりさん!</c>, exclamation mark and all, because that is
+    ///   how the line ended. That mark would become part of the glossary key and match nothing ever
+    ///   again. Letters of every script survive, so Japanese and Latin names are untouched.
+    /// </summary>
+    internal static string TrimPunctuation(string? value)
+    {
+        var text = (value ?? string.Empty).Trim();
+        var start = 0;
+        var end = text.Length - 1;
+        while (start <= end && !char.IsLetterOrDigit(text[start]))
+        {
+            start++;
+        }
+
+        while (end >= start && !char.IsLetterOrDigit(text[end]))
+        {
+            end--;
+        }
+
+        return end < start ? string.Empty : text[start..(end + 1)];
     }
 
     private static readonly string[] Honorifics = ["선생님", "짱", "씨", "군", "님", "상"];
