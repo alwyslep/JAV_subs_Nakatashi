@@ -5,7 +5,7 @@
 # A command ADDED means upstream (or we) introduced one - place it in our layout,
 # then regenerate with:  ./tools/build.ps1 menu-baseline
 #
-# 146 commands.
+# 149 commands.
 ClearSecondarySubtitleCommand
 CommandExitCommand
 CommandFileNewCommand
@@ -70,6 +70,7 @@ ShowAssaApplyCustomOverrideTagsCommand
 ShowAssaAttachmentsCommand
 ShowAssaChangeResolutionCommand
 ShowAssaDrawCommand
+ShowAssaFontCollectorCommand
 ShowAssaGenerateBackgroundCommand
 ShowAssaGenerateProgressBarCommand
 ShowAssaImageColorPickerCommand
@@ -87,6 +88,7 @@ ShowFindCommand
 ShowFindDoubleLinesCommand
 ShowFindDoubleWordsCommand
 ShowGoToLineCommand
+ShowGoToVideoPositionCommand
 ShowHelpCommand
 ShowHistoryCommand
 ShowImportSubtitleWithManuallyChosenEncodingCommand
@@ -128,6 +130,7 @@ ShowToolsMergeShortLinesCommand
 ShowToolsMergeTwoSubtitlesCommand
 ShowToolsNameCheckCommand
 ShowToolsRemoveTextForHearingImpairedCommand
+ShowToolsRemoveUnicodeCharactersCommand
 ShowToolsRenumberCommand
 ShowToolsSplitBreakLongLinesCommand
 ShowToolsSplitCommand

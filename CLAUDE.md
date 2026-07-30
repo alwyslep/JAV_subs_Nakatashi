@@ -1,7 +1,7 @@
 # JAV_subs_Nakatashi
 
 Fork of [SubtitleEdit/subtitleedit](https://github.com/SubtitleEdit/subtitleedit) (MIT),
-currently rebased onto upstream `93f828633` (**v5.1.0-rc18**). Only the **repository** was
+currently **merged with** upstream `09b9e0f08` (**v5.1.0**). Only the **repository** was
 renamed — the solution, assemblies, and namespaces are deliberately unchanged (see
 *Fork policy*).
 
@@ -432,7 +432,7 @@ SDK-resolution error instead of a confusing pile of compile errors.
 | `src/libuilogic` | `LibUiLogic` | UI-agnostic logic |
 | `src/ui` | `UI` | Avalonia desktop app → `SubtitleEdit.exe` |
 | `src/seconv` | `SeConv` | `seconv` CLI converter |
-| `tests/{libse,libuilogic,seconv,UI}` | xUnit | 2,136 tests |
+| `tests/{libse,libuilogic,seconv,UI}` | xUnit | 2,257 tests |
 
 `tests/benchmarks/UiBenchmarks.csproj` exists but is **not** in `SubtitleEdit.sln`, so
 solution-wide build/test commands skip it. Build it explicitly if you need it.
@@ -464,11 +464,83 @@ Publish output lands in `publish/<runtime>/` (gitignored). `publish` stamps the 
 parsed out of `src/ui/Logic/Config/Se.cs` — that file is the single source of truth for
 the app version, and both CI and `build.ps1` read it with the same regex.
 
-**Baseline (verified 2026-07-30, on `93f828633` / rc18 + `feat/jav-metadata`):** clean `Release`
-build with **0 warnings, 0 errors**; `2134 passed / 1 failed / 1 skipped` (see below);
+**Baseline (verified 2026-07-30, on `09b9e0f08` / v5.1.0 after the merge):** clean `Release` build
+with **0 errors**; `2255 passed / 1 failed / 1 skipped` (see below);
 `publish win-x64 --self-contained` produces a 138 MB single-file `SubtitleEdit.exe`
 (263 MB with libmpv and the native Skia/HarfBuzz DLLs alongside; last measured on rc17).
-Fork CI reproduced the rc17 counts on `windows-latest`, and `ubuntu-latest` built clean.
+
+### The warning gate is now a DELTA gate, and this is not a relaxation
+
+Through rc18 the tree really did build with **0 warnings** on a cold build — verified, not assumed
+(`git worktree` at the pre-merge commit, non-incremental: 0). The v5.1.0 sync changed that:
+**upstream itself now builds with 188 warnings**, almost all nullable-annotation debt
+(`CS8618` ×198 occurrences across multi-targeting, `CS8603`, `CS8600`, `CS8602`…) concentrated in
+the translate providers and `WhisperHelper`. After the merge this tree sits at **186**.
+
+**Fork-authored files contribute 0 of them** — measured by filtering the cold-build log against
+every fork-added path (`JavData/`, `NameCheck/`, `SpeechRegister/`, `Theming/Nakatashi/`, the fork's
+`Se*`/`Language*` files). So the gate still has teeth in the only place the fork controls:
+
+> **A fork change must add no warning. The upstream baseline is 186 and is not the fork's to pay
+> down.** Read the count, not the absence of a count.
+
+Fixing 186 nullable annotations in upstream files is precisely the whole-tree divergence *Fork
+policy* exists to prevent, and it would make every later sync worse — i.e. it would cost the fork
+its ability to keep receiving upstream's work, which is the thing that actually improves output.
+Same reasoning as the known-failing VobSub test: record it, exclude it, do not pretend.
+
+**A caution learned the hard way here:** `dotnet build` is incremental, and a project whose inputs
+did not change is skipped along with its warnings. Every "0 warnings" this fork reports must come
+from `--no-incremental` or a fresh worktree, or it means nothing.
+
+### Upstream sync rc18 → v5.1.0 (2026-07-30) — and the strategy changed
+
+**116 upstream commits, merged rather than rebased.** This reverses what *Fork policy* used to say,
+on evidence:
+
+- The rebase was attempted first. It stopped at commit **5 of 34** on `Se.cs`, and 34 fork commits
+  against 19 overlapping files means that conflict shape recurs per commit.
+- The same sync as a **merge produced 2 conflicts total** — `Se.cs` and `InitMenu.cs`. Everything
+  else auto-merged, *including* `MainViewModel.cs`, upstream `+247/−53` against the fork's `+73/−1`,
+  which was the file most likely to go wrong.
+- Rebase's stated justification in this file was "keep divergence small and rebase keeps working."
+  Divergence is no longer small — 117 fork-touched files, up from 67 at the last sync — so the
+  premise expired. Merging also keeps the fork's commit messages, which are this project's real
+  design record.
+
+Overlap: **19 files** of the fork's 117 and upstream's 444 (it was 6 at rc17 → rc18; the growth is
+the fork's, not upstream's).
+
+The two conflicts and how they were settled:
+
+- **`Se.cs`** — the fork's line mirroring the theme into `Configuration.Settings.General.UseDarkTheme`
+  collided with upstream deleting it. Resolution: **take the deletion.** Upstream `3acb82e0c` removed
+  the property itself (715 lines out of `GeneralSettings`) because libse never read it, and
+  `git grep` confirmed nothing in the fork read it either. Plugins get their dark flag from
+  `PluginThemeColorsFactory`, a separate touch point that is unaffected.
+- **`InitMenu.cs`** — upstream appended to the alphabetically-sorted Tools list that Phase 4 replaced
+  with hand-ordered blocks. Resolution: keep the fork's structure and place the new item by hand.
+
+**Three new upstream commands, and the inventory net caught all three** (it fired on
+`MainMenu_HasNoCommandsMissingFromBaseline`, which is exactly its job):
+
+| Command | Where it went |
+|---|---|
+| `ShowToolsRemoveUnicodeCharactersCommand` | Tools → the find-and-fix block, next to Remove text for HI |
+| `ShowGoToVideoPositionCommand` | Video (upstream's own placement, kept) |
+| `ShowAssaFontCollectorCommand` | ASSA tools (upstream's own placement, kept) |
+
+Baseline **146 → 149, three lines added and none removed.** Verified before committing, per the rule
+below.
+
+**A trap this sync walked into:** `./tools/build.ps1 menu-baseline` writes the baseline file with
+**CRLF**, and this repo is LF-only. Converted back by hand. Check it every time — it is the same
+class of mistake as the lock file and the BOM script.
+
+Also checked and clean: `packages.lock.json` has 0 CRLF; the BOM/line-ending state of every merged
+upstream file is byte-identical to upstream's own (spot-verified `Subtitle.cs`, `Se.cs`,
+`Italian.json` — the last legitimately ships CRLF upstream); the fork's `nameCheck` (16) and
+`speechRegister` (22) language sections survived with keys still matching their C# properties.
 
 ### Upstream sync rc17 → rc18 (2026-07-29)
 
@@ -564,8 +636,8 @@ so that is enforced by test, not by promise.
 
 `tests/UI/Features/Main/Layout/MainMenuInventoryTests.cs` resolves the real `MainViewModel` from
 the DI container, builds the menu via `InitMenu.Make`, and compares the set of reachable commands
-against `main-menu-inventory.baseline.txt` (**146 commands** since the name-check tool; 145 after
-Phase 4, 143 at Phase 0).
+against `main-menu-inventory.baseline.txt` (**149 commands** after the v5.1.0 sync; 146 with the
+name-check tool, 145 after Phase 4, 143 at Phase 0).
 
 Entries are keyed by **`MainViewModel` command property name — never by menu path or header text**,
 because paths and wording are exactly what we intend to change, and header text moves with
@@ -603,13 +675,18 @@ The script refuses to run on a dirty tree.
 
 ## Fork policy
 
-Keep divergence from upstream small and legible so `git rebase upstream/main` keeps
-working:
+Keep divergence from upstream small and legible so **`git merge upstream/main` stays cheap**:
 
 1. **Do not rename** the solution, `AssemblyName` (`SubtitleEdit`), or `RootNamespace`
    (`Nikse.SubtitleEdit`). A rename touches nearly every file and turns every future
-   rebase into a whole-tree conflict. The repository name is the only thing changed.
+   sync into a whole-tree conflict. The repository name is the only thing changed.
 2. Put fork-specific files in **new** paths (`tools/`, `CLAUDE.md`, `global.json`,
    `.github/workflows/fork-ci.yml`) rather than editing upstream files.
 3. When upstream files must change, keep the diff minimal and comment *why*.
 4. MIT license — keep `LICENSE` and upstream attribution intact.
+5. **Sync by merge, not rebase** (changed 2026-07-30 on evidence — see *Upstream sync rc18 →
+   v5.1.0*). Rebase was the rule while the fork touched 67 files; at 117 files and 34 commits it
+   stopped at conflict 5 of 34, while the same sync as a merge had 2 conflicts in total. `tools/
+   sync-upstream.ps1` still defaults to rebase — pass `-Strategy merge`.
+6. **A fork change adds no warning.** The tree carries upstream's 186; fork-authored files carry 0.
+   Measure with `--no-incremental` or the number is meaningless.

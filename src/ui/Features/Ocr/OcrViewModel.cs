@@ -14,7 +14,7 @@ using Nikse.SubtitleEdit.Core.ContainerFormats.TransportStream;
 using Nikse.SubtitleEdit.Core.Interfaces;
 using Nikse.SubtitleEdit.Core.SubtitleFormats;
 using Nikse.SubtitleEdit.Core.VobSub;
-using Nikse.SubtitleEdit.Core.VobSub.Ocr.Service;
+using Nikse.SubtitleEdit.UiLogic.Ocr.Service;
 using Nikse.SubtitleEdit.Features.Files.ImportImages;
 using Nikse.SubtitleEdit.Features.Main;
 using Nikse.SubtitleEdit.Features.Ocr.BinaryOcr;
@@ -60,6 +60,7 @@ using System.Threading.Tasks;
 using Nikse.SubtitleEdit.UiLogic.LlamaCpp;
 using Nikse.SubtitleEdit.UiLogic.Ocr.FixEngine;
 using Nikse.SubtitleEdit.UiLogic.SpellCheck;
+using Nikse.SubtitleEdit.UiLogic.Common;
 
 namespace Nikse.SubtitleEdit.Features.Ocr;
 
@@ -3087,7 +3088,7 @@ public partial class OcrViewModel : ObservableObject
         for (var i = 0; i < matches.Count - 1; i++)
         {
             var match = matches[i];
-            if (match.Text.EndsWith("1", StringComparison.Ordinal) && !match.Italic)
+            if (match.Text.EndsWith('1') && !match.Italic)
             {
                 var pixelsLess = 0;
                 if (pixelsAreSpace > 7)

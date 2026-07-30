@@ -31,6 +31,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Web;
 using Nikse.SubtitleEdit.UiLogic.SpellCheck;
+using Nikse.SubtitleEdit.UiLogic.Common;
 
 namespace Nikse.SubtitleEdit.Features.SpellCheck;
 

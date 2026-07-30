@@ -488,6 +488,14 @@ public static class InitMenu
                 Header = l.RemoveTextForHearingImpaired,
                 Command = vm.ShowToolsRemoveTextForHearingImpairedCommand,
             },
+            // Arrived upstream in the rc19 sync. It belongs in this block: it rewrites characters in
+            // the text the same way its neighbours do, and upstream's alphabetical sort - which this
+            // fork dropped - would otherwise have filed it between unrelated commands.
+            new MenuItem
+            {
+                Header = l.RemoveUnicodeCharacters,
+                Command = vm.ShowToolsRemoveUnicodeCharactersCommand,
+            },
             new MenuItem
             {
                 Header = l.ConvertActors,
@@ -641,6 +649,12 @@ public static class InitMenu
                     Command = vm.CommandVideoCloseCommand,
                 },
                 menuItemAudioTracks,
+                new Separator(),
+                new MenuItem
+                {
+                    Header = Se.Language.Video.GoToVideoPositionDotDotDot,
+                    Command = vm.ShowGoToVideoPositionCommand,
+                },
                 new Separator(),
                 new MenuItem
                 {
@@ -964,6 +978,11 @@ public static class InitMenu
             {
                 Header = l.AssaStyles,
                 Command = vm.ShowAssaStylesCommand,
+            },
+            new MenuItem
+            {
+                Header = l.AssaFontCollector,
+                Command = vm.ShowAssaFontCollectorCommand,
             },
             new MenuItem
             {
