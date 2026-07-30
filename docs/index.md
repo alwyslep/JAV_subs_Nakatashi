@@ -21,6 +21,8 @@ Subtitle Edit is a free, open-source editor for video subtitles. This is the doc
 
 ### Tools
 - [AI Review](features/ai-review.md) — Proofread with a local LLM (llama.cpp, Ollama, or any OpenAI-compatible endpoint)
+- [Check Names](features/name-check.md) — Find a person the subtitle spells two ways, and remember the spelling you chose
+- [Match Speech Level](features/speech-register.md) — Rewrite the endings of the selected lines to one Korean speech level (화계)
 - [Fix Common Errors](features/fix-common-errors.md) — Automatic error detection and fixing
 - [Check and Fix Netflix Errors](features/netflix-errors.md) — Netflix quality checks, proposed fixes, and CSV reports
 - [Batch Convert](features/batch-convert.md) — Convert multiple subtitle files

@@ -35,6 +35,8 @@ Lines are grouped into sentence units, so a sentence that continues over several
 
 The **Edit prompt...** button opens the review instructions sent to the model. `{language}` is replaced with the auto-detected subtitle language. The strict data-exchange contract is appended by Subtitle Edit and cannot be broken by prompt edits, so feel free to tailor the instructions - e.g. "also flag anachronisms" or "never touch song lyrics".
 
+When the shared glossary holds spellings for this film's series, a line naming them is appended too - the default prompt already says to leave names alone, and this tells the model *which spelling* each name has, so it does not invent a new romanisation while obeying that rule. It is appended rather than substituted, so an edited prompt still gets the constraint. See [Check Names](name-check.md) for where those spellings come from.
+
 ## Safety rails
 
 - Nothing is applied automatically - you decide per suggestion.

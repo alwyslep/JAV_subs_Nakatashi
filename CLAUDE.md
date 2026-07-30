@@ -8,7 +8,12 @@ renamed — the solution, assemblies, and namespaces are deliberately unchanged 
 - `origin`   → `https://github.com/alwyslep/JAV_subs_Nakatashi.git`
 - `upstream` → `https://github.com/SubtitleEdit/subtitleedit.git`
 
-## Where we are (2026-07-28)
+## Where we are (2026-07-30)
+
+The fork has **two** bodies of work. This section is the first — the UI/UX rework, complete. The
+second is *JAV metadata + the shared catalogues*, its own section further down.
+
+### UI/UX rework (complete)
 
 Goal: re-skin the UI in a modern "Deep Gray" dark design system (the reference doc is
 `C:\Users\geech\Documents\배경색 및 다크 모드 (The Deep Gray Palette).md` — Gemini / Claude-desktop
@@ -277,19 +282,89 @@ Roadmap: ~~1 palette/surfaces~~ → ~~2 typography~~ → ~~3 accent gradient + t
 overlays~~ → ~~4 menu re-grouping~~ → ~~5 grid legibility~~ → ~~6 parked loose ends~~.
 **The UI/UX rework is complete.**
 
+### JAV metadata + the shared catalogues (branch `feat/jav-metadata`, 2026-07-29 → 30)
+
+The second body of fork work, and a different kind: not a re-skin but **making the editor read and
+write the same data the sibling translator already has.** The full record — every measurement, every
+reversed judgement — is `docs-fork/video-metadata-plan.ko.md`; this is the map.
+
+The premise, measured across five drives: 22,296 mp4 / 0 mkv, **no sidecar metadata at all**, so
+the mp4 atoms are the only in-file store — and they carry the thing `CLAUDE.md` said was destroyed
+the moment a Korean SRT exists: **relationship information, in Japanese** (`©cmt` synopsis 57%,
+`©gen` genres 88%, `©ART` cast 94%). Better still, the translator had already produced per-film
+speech-level guidebooks and a 27,136-row glossary. So the editor **reads the same SQLite files**
+rather than re-deriving anything.
+
+| Stage | What landed |
+|---|---|
+| 1 | `Logic/Media/VideoTagInfo.cs` — TagLib# MP4 reader (already a dependency; no ffprobe), surfaced in the media-info window |
+| 2 | `Logic/JavData/` — `JavDataPaths` / `JavDb` / `JavGuidebook` / `JavCatalog`, `Microsoft.Data.Sqlite`, `SeJavData` paths (`D:\` default, overridable both sides) |
+| 3 | `Logic/JavData/SpeakerContext.cs` — the speech-level relationship note fills itself from guidebook → tags → catalogue, **0 extra LLM calls** |
+| 4 | Writing back: guidebook (`pinned`) and glossary (`JavTerms.Pin`); the translator's `terms` gained a `pinned` column so a machine cannot overwrite a person's choice |
+| 5 | Deterministic name back-check — **built, measured, and abandoned**; 5′ injected settled spellings into AI review instead |
+| 6 | `Features/Tools/NameCheck/` — the LLM name-consistency pass; menu inventory **145 → 146** |
+
+Hard-won facts — do not re-derive:
+
+- **The release code comes from a catalogue lookup, not a regex.** `©alb` is the code only 57% of
+  the time (it is a series name otherwise, and on at least one file it is *another film's* code),
+  and codes come in ≥6 shapes. Matching the file-name stem against `catalog` (95,871 rows) resolves
+  **97%** of 400 sampled files and returns the catalogue's own spelling, which is what makes the
+  editor's key agree with the translator's.
+- **Accumulation unit differs per layer** (the translator's `regdb.py` header nails this down):
+  spellings are global/series facts, **relationships are per-film facts** — carrying a speech level
+  across films makes it false, not stale.
+- **A name is transliterated, never translated.** 18% of the tags are Korean MT and carry
+  `鈴の家りん → 린의 집 인`. `SpeakerContext.TrustedNames` drops **the whole cast list** if any one
+  entry contains Hangul: the surviving Latin fragments only survived by not being Korean, and a
+  wrong cast is worse than none (the model hunts for those people in the dialogue and reasons from
+  failing to find them).
+- **Latin-only `src` in the glossary is not pollution.** Measured: 11.9% of `quality='ok'` rows
+  (2,154), incl. 93 `%-san` / 53 `%-kun` / 187 `%-chan` — harvested from the library's 3,819 English
+  subtitles. `JavTerms.CanPin` rejecting Hangul but allowing romanisation is **parity with the
+  translator**, not a hole. Narrowing it would give the editor its own private rule.
+- **Name-check pin rate is a metadata-coverage function, not a model-quality one.** Measured over 8
+  real subtitles against a hosted model: 5 files found nothing, 4 findings survived the guards, 2
+  were pinnable. The two that were pinnable had the original form because a *video tag* supplied it.
+- The three name-check guards each came from an observed failure: un-deduplicated text hit the
+  40,000-char cap at line ~3,000 of a 6,582-line file (everything after was never examined);
+  replacing a string with one that contains it self-feeds (`사카미치 사카미치 미루 사카미치 미루`);
+  and swapping a form of address leaves the particle on the wrong ending
+  (`사카미치 미루은, 반드시`). Only `상 → 씨` is exempt — 상 is さん left half-transliterated.
+
 ## Sibling project: `srt-translator`
 
 `C:\Users\geech\dev2\jav\subtitles\srt-translator` (repo `alwyslep/srt-translator`) is where the
 Japanese→Korean translation actually happens (PySubtrans + Gemini/DeepSeek). **Speech-register
 (화계) work belongs there, not here** — the relationship information lives only in the Japanese
 role language and is destroyed the moment the Korean SRT exists. Subtitle Edit can only patch
-after the fact.
+after the fact. That is still true; what changed is that the editor now patches **into the same
+catalogues**, so a correction made here survives into the next translation run.
 
 A `feat/register` branch is checked out as a **git worktree** at
 `…\subtitles\srt-translator-register` (`git worktree add` does not need a clean tree, so the
 main worktree's in-progress edits stay untouched). Three Python-specific gotchas: venvs are
 per-worktree and `.gitignore` does not cover `.venv/`; `%APPDATA%\AI-SRT-Translator\terminology\`
 is **shared** between worktrees, so an A/B comparison cross-contaminates the term snapshots.
+**Only the main worktree has a `.venv`** — that is the one that actually runs.
+
+### The two branches must both carry the DB contract (2026-07-30)
+
+The shared catalogues are now a **contract between two programs**, so a translator branch that does
+not know about it does damage rather than merely lagging. Measured on `main` before the fix:
+`termdb.py` had **zero** mentions of `pinned`, so `save_series()`'s re-harvest overwrote spellings
+the editor had pinned; and `guidebook.py` had zero mentions of SQLite, so it could not see the 42
+guidebook rows already migrated out of `%APPDATA%`. The DB migration and `ALTER` had already run, so
+this was live, not theoretical.
+
+The two commits (`paths.py` + the `pinned` column) are therefore on **both** branches — cherry-picked
+to `main` as `257a65e` / `e47d788`, 0 conflicts. The A/B baseline is intact: the only difference
+between the branches is still `meta.py`'s `PRESCAN_PROMPT` and `instructions/pornify.txt`. Verified
+afterwards: all **17** Python self-check modules pass (`python -m srt_translator.test_*` — there is
+no pytest in the venv), `paths.*()` returns the same `D:\` paths as before, and `guidebook.load()`
+reads from SQLite.
+
+**Anything that changes the DB contract goes to both branches.** A prompt experiment does not.
 
 `.claude/settings.json` holds a permission allowlist for the usual dotnet/git commands. Upstream's
 `.gitignore` excludes `.claude/`, so it is **local-only and not in the repo** — recreate it by hand
@@ -319,7 +394,7 @@ SDK-resolution error instead of a confusing pile of compile errors.
 | `src/libuilogic` | `LibUiLogic` | UI-agnostic logic |
 | `src/ui` | `UI` | Avalonia desktop app → `SubtitleEdit.exe` |
 | `src/seconv` | `SeConv` | `seconv` CLI converter |
-| `tests/{libse,libuilogic,seconv,UI}` | xUnit | 1,960 tests |
+| `tests/{libse,libuilogic,seconv,UI}` | xUnit | 2,136 tests |
 
 `tests/benchmarks/UiBenchmarks.csproj` exists but is **not** in `SubtitleEdit.sln`, so
 solution-wide build/test commands skip it. Build it explicitly if you need it.
@@ -351,8 +426,8 @@ Publish output lands in `publish/<runtime>/` (gitignored). `publish` stamps the 
 parsed out of `src/ui/Logic/Config/Se.cs` — that file is the single source of truth for
 the app version, and both CI and `build.ps1` read it with the same regex.
 
-**Baseline (verified 2026-07-29, on `93f828633` / rc18):** clean `Release` build with
-**0 warnings, 0 errors**; `1958 passed / 1 failed / 1 skipped` (see below);
+**Baseline (verified 2026-07-30, on `93f828633` / rc18 + `feat/jav-metadata`):** clean `Release`
+build with **0 warnings, 0 errors**; `2134 passed / 1 failed / 1 skipped` (see below);
 `publish win-x64 --self-contained` produces a 138 MB single-file `SubtitleEdit.exe`
 (263 MB with libmpv and the native Skia/HarfBuzz DLLs alongside; last measured on rc17).
 Fork CI reproduced the rc17 counts on `windows-latest`, and `ubuntu-latest` built clean.
@@ -396,6 +471,23 @@ git checkout -- src/ui/packages.lock.json
 `build.ps1 publish` prints a reminder when this happens. Plain `restore`/`build`/`test`
 leave the lock file alone.
 
+**Two additions from the SQLite dependency (2026-07-29) — the blanket `checkout` is no longer
+safe on its own:**
+
+- When a dependency genuinely changes, the lock file legitimately changes too, and
+  `git checkout -- src/ui/packages.lock.json` then **throws away the real change** along with the
+  publish artifact. Correct order: `checkout` → `dotnet restore` → convert to LF.
+- **NuGet rewrites `packages.lock.json` with CRLF.** This repo is LF-only, so a legitimate
+  47-line change showed up as **+737 / −619** — the whole file. Convert it back to LF before
+  committing or the diff is unreviewable, which is the exact thing this file warns about under
+  "any bulk rewrite must preserve the original BOM state and line endings per file".
+- `Microsoft.Data.Sqlite` 10.0.10 resolves `SQLitePCLRaw` **2.1.11**, which carries a
+  high-severity advisory (GHSA-2m69-gcr7-jv3q) and so reports **NU1903** — the first warning in a
+  tree this fork keeps at zero. `SQLitePCLRaw.bundle_e_sqlite3` is pinned to **2.1.12** in
+  `UI.csproj` with a comment saying to drop the pin once the transitive resolve is clean.
+- Its native `e_sqlite3.dll` (1.89 MB) lands **beside** the single-file exe, not embedded — same
+  as libmpv/Skia/HarfBuzz, so deployment is unchanged. exe 138 → **145 MB**, folder 263 → **279 MB**.
+
 Large fetched binaries are cached in `third_party/` (libmpv is ~118 MB), which has its
 own `.gitignore`. `publish/` is already covered by upstream's root `.gitignore`.
 
@@ -434,7 +526,8 @@ so that is enforced by test, not by promise.
 
 `tests/UI/Features/Main/Layout/MainMenuInventoryTests.cs` resolves the real `MainViewModel` from
 the DI container, builds the menu via `InitMenu.Make`, and compares the set of reachable commands
-against `main-menu-inventory.baseline.txt` (**145 commands** since Phase 4; 143 at Phase 0).
+against `main-menu-inventory.baseline.txt` (**146 commands** since the name-check tool; 145 after
+Phase 4, 143 at Phase 0).
 
 Entries are keyed by **`MainViewModel` command property name — never by menu path or header text**,
 because paths and wording are exactly what we intend to change, and header text moves with
