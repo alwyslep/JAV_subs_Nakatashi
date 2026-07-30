@@ -229,4 +229,142 @@ public class NameCheckProtocolTests
         Assert.Contains("x Korean", prompt);
         Assert.Contains("credited: 大島優香", prompt);
     }
+
+    // ─── The second pass: what the original language calls this person ────────────────────────────
+
+    private static OriginalFormQuestion Question(string korean, params (string Translated, string Original)[] lines)
+        => new(korean, lines);
+
+    [Fact]
+    public void BuildOriginalFormRequest_PairsEachLineWithItsOriginal()
+    {
+        var request = NameCheckProtocol.BuildOriginalFormRequest(
+            [Question("유미카", ("유미카 씨", "由美香さん"), ("유미카는", "由美香は"))]);
+
+        Assert.Contains("NAME: 유미카", request);
+        Assert.Contains("translated: 유미카 씨", request);
+        Assert.Contains("original:   由美香さん", request);
+        Assert.Contains("original:   由美香は", request);
+    }
+
+    [Fact]
+    public void BuildOriginalFormRequest_CapsTheLinesShownPerName()
+    {
+        var lines = Enumerable.Range(0, 9).Select(i => ("번역" + i, "原文" + i)).ToArray();
+        var request = NameCheckProtocol.BuildOriginalFormRequest([Question("이름", lines)]);
+
+        Assert.Contains("原文" + (NameCheckProtocol.MaxLinesPerQuestion - 1), request);
+        Assert.DoesNotContain("原文" + NameCheckProtocol.MaxLinesPerQuestion, request);
+    }
+
+    [Fact]
+    public void ParseOriginalForms_ReadsTheSourceAndTheVerdict()
+    {
+        var forms = NameCheckProtocol.ParseOriginalForms(
+            """{"names":[{"ko":"유미카","src":"由美香","isName":true,"fits":true},{"ko":"베핀","src":"べっぴん","isName":false,"fits":true}]}""");
+
+        Assert.Equal("由美香", forms["유미카"].Source);
+        Assert.True(forms["유미카"].IsName);
+        Assert.Equal("べっぴん", forms["베핀"].Source);
+        Assert.False(forms["베핀"].IsName);
+    }
+
+    // ★The measured case: the model offered 히노코리 씨 as canonical and 히노보리 씨 as the mistake,
+    //   while the original said ひのぼり. Without this the "fix" writes the wrong reading over the
+    //   right one - and now that the source is filled in, remembers it too.
+    [Fact]
+    public void ParseOriginalForms_ReadsTheSpellingVerdict()
+    {
+        var forms = NameCheckProtocol.ParseOriginalForms(
+            """{"names":[{"ko":"히노코리 씨","src":"ひのぼりさん","isName":true,"fits":false}]}""");
+
+        Assert.False(forms["히노코리 씨"].ChosenSpellingFits);
+    }
+
+    // ★The two flags default in opposite directions on purpose. "isName" gates a silent write, so
+    //   absence must not open it. "fits" raises a visible objection, so absence must not manufacture
+    //   one - a model that skips the key would otherwise unselect every good suggestion.
+    [Theory]
+    [InlineData("""{"names":[{"ko":"이름","src":"名前","isName":true}]}""", true)]
+    [InlineData("""{"names":[{"ko":"이름","src":"名前","isName":true,"fits":"no"}]}""", true)]
+    [InlineData("""{"names":[{"ko":"이름","src":"名前","isName":true,"fits":null}]}""", true)]
+    [InlineData("""{"names":[{"ko":"이름","src":"名前","isName":true,"fits":false}]}""", false)]
+    public void ParseOriginalForms_OnlyAnExplicitFalseDoubtsTheSpelling(string reply, bool expected)
+    {
+        Assert.Equal(expected, NameCheckProtocol.ParseOriginalForms(reply)["이름"].ChosenSpellingFits);
+    }
+
+    // ★This flag decides whether a spelling is written to data the translator then trusts, so a
+    //   malformed or missing answer must not open the gate. The file still gets fixed either way.
+    [Theory]
+    [InlineData("""{"names":[{"ko":"이름","src":"名前"}]}""")]
+    [InlineData("""{"names":[{"ko":"이름","src":"名前","isName":"yes"}]}""")]
+    [InlineData("""{"names":[{"ko":"이름","src":"名前","isName":1}]}""")]
+    [InlineData("""{"names":[{"ko":"이름","src":"名前","isName":null}]}""")]
+    public void ParseOriginalForms_TreatsAnythingButTrueAsNotAName(string reply)
+    {
+        Assert.False(NameCheckProtocol.ParseOriginalForms(reply)["이름"].IsName);
+    }
+
+    [Fact]
+    public void ParseOriginalForms_SurvivesRubbish()
+    {
+        Assert.Empty(NameCheckProtocol.ParseOriginalForms("no json here"));
+        Assert.Empty(NameCheckProtocol.ParseOriginalForms("""{"names":[]}"""));
+        Assert.Empty(NameCheckProtocol.ParseOriginalForms("""{"names":[{"src":"名前","isName":true}]}"""));
+    }
+
+    // ★The instructions say to copy the original form verbatim out of the original line. This is where
+    //   that is enforced rather than trusted - a reconstructed original is worse than none, because it
+    //   is what the glossary would be keyed on.
+    [Fact]
+    public void WithOriginalForm_RefusesASourceTheOriginalLineDoesNotContain()
+    {
+        var finding = Finding(string.Empty, "유미카", "유미코");
+
+        var kept = NameCheckProtocol.WithOriginalForm(
+            finding, new OriginalForm("由美香", true, true), ["由美香さんですね"]);
+        var refused = NameCheckProtocol.WithOriginalForm(
+            finding, new OriginalForm("Yumika", true, true), ["由美香さんですね"]);
+
+        Assert.Equal("由美香", kept.Source);
+        Assert.Equal(string.Empty, refused.Source);
+    }
+
+    [Fact]
+    public void WithOriginalForm_LeavesTheFindingAloneWhenThereIsNoSource()
+    {
+        var finding = Finding("由美香", "유미카", "유미코");
+
+        var same = NameCheckProtocol.WithOriginalForm(finding, new OriginalForm(string.Empty, true, true), ["由美香"]);
+
+        Assert.Equal("由美香", same.Source);
+    }
+
+    // ★The measured regression this rule exists for: on a film whose video tag had already given the
+    //   first pass 由美香, the second pass answered 希米卡 - a Chinese transliteration read out of a
+    //   subtitle named .ja.srt but written in Chinese. Filling an unknown source is the job; replacing
+    //   a known one is not.
+    [Fact]
+    public void WithOriginalForm_NeverOverwritesASourceTheFirstPassAlreadyKnew()
+    {
+        var finding = Finding("由美香", "유미카", "유미코");
+
+        var kept = NameCheckProtocol.WithOriginalForm(
+            finding, new OriginalForm("希米卡", true, true), ["哦希米卡"]);
+
+        Assert.Equal("由美香", kept.Source);
+    }
+
+    // A source filled in by the second pass has to survive the pin gate too - the Hangul rule is not
+    // relaxed just because a second model call vouched for it.
+    [Fact]
+    public void CanPin_StillRejectsAHangulSourceAfterTheSecondPass()
+    {
+        var finding = NameCheckProtocol.WithOriginalForm(
+            Finding(string.Empty, "유미카", "유미코"), new OriginalForm("유미카씨", true, true), ["유미카씨"]);
+
+        Assert.Equal("유미카씨", finding.Source);
+        Assert.False(NameCheckProtocol.CanPin(finding));
+    }
 }

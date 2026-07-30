@@ -39,15 +39,43 @@ Suggestions are filtered before you ever see them:
 - **The form of address has to survive the swap.** The substitution is word for word, so 미르짱 → 사카미치 미루 leaves the particle attached to the wrong ending (`사카미치 미루은, 반드시`). 씨 for 군 is rejected too, and rightly — which honorific a speaker uses is the relationship, not a typo. The single exception is **상 → 씨**: 상 is さん left half-transliterated, so correcting it *is* the fix.
 - Suggestions that would add or remove formatting tags are discarded.
 
+## The original language
+
+If the film's own subtitle in its original language is next to the video and its timecodes line up, a
+second, small request goes out after the first: the names found, each with the lines that mention it
+in both languages. It asks three things — how the original writes the name, whether it is a person at
+all, and whether the chosen spelling is a faithful reading of that original.
+
+This is what makes remembering possible: the first pass only ever sees the translation, so it usually
+cannot know the original form. It is also what keeps remembering honest — the answers are read off the
+original word rather than guessed from a transliteration.
+
+The original is used only when it can be trusted, and is refused otherwise:
+
+- **The name of the file is not taken as proof of its language.** Measured over 400 files named
+  `*.ja.srt`: 257 were Japanese, 124 Chinese, 16 romanised, 3 Korean. The content decides.
+- **Timecodes must line up within 100 ms.** Translation preserves them, so a real match is exact; a
+  near miss is a different line. If fewer than half the lines match, the file is a different cut and
+  is discarded whole rather than quoted from.
+- **One file is used, not all of them.** Several original-language subtitles almost always means
+  alternative rips of the same film rather than parts of it.
+
+Nothing here is required. With no usable original the pass behaves exactly as it did before — it just
+cannot teach the glossary as often.
+
 ## Remembering a spelling
 
 **Remember these spellings for this series** writes accepted fixes to the shared glossary, so the sibling translator uses them for the next film in the series. It is deliberately narrow:
 
 - Only suggestions you **accepted** are written, and only **once per name**. Pinning a rejected suggestion would carve a spelling you just refused into data the translator then trusts.
-- Only names whose **original form is known** can be saved. When the model could not say what the original was, the row says *"original form unknown — fixes the file only"* rather than quietly not saving.
+- Only names whose **original form is known** can be saved. When it is not known, the row says *"original form unknown — fixes the file only"* rather than quietly not saving.
 - A source form that is already in Hangul is refused: it went through a machine translation, so it is not the original spelling of anything.
+- **A name the original says is not a person is not saved** — the line is still fixed, and the row says *"not a person in the original"*.
+- **A spelling the original contradicts is not saved either**, and that row starts **unchecked** with *"the original does not sound like this — check before applying"*. Measured: on one film both findings had the direction reversed — the pass offered 히노코리 씨 as correct and 히노보리 씨 as the mistake, while the original said ひのぼり. The pass is still right that the file spells one person two ways; which way is right is worth your eye.
 - Pinned rows are protected on the translator side — its re-harvest and its clean-up pass both skip them, so a machine cannot overwrite a spelling a person chose.
 
 ## How often it finds something
 
-Measured over eight real Korean subtitles (876–2,555 cues) against a hosted model: five files produced nothing, three produced four findings between them, and two of those four could be pinned. Two of six raw entries were removed by the rails above. Treat an empty result as the normal case — this is a check, not a rewrite pass.
+Measured over eight real Korean subtitles (876–2,555 cues) against a hosted model: five files produced nothing, and the rest produced a handful of findings between them, of which the rails above removed about a third. Treat an empty result as the normal case — this is a check, not a rewrite pass.
+
+The number that actually gets pinned swings between runs, because the first pass is not deterministic: the same eight films gave 3 pinnable names one run and 1 the next. Reading the original language did not reliably raise that number; what it did was stop wrong spellings from being remembered.

@@ -12,10 +12,13 @@ public class LanguageNameCheck
     public string Info { get; set; }
     public string Run { get; set; }
     public string Working { get; set; }
+    public string CheckingOriginal { get; set; }
     public string DoneXNamesYLines { get; set; }
     public string PinAccepted { get; set; }
     public string PinAcceptedInfo { get; set; }
     public string NotPinnable { get; set; }
+    public string NotAPerson { get; set; }
+    public string SpellingDoubted { get; set; }
     public string EditPromptTitle { get; set; }
     public string PromptInfo { get; set; }
 
@@ -29,12 +32,15 @@ public class LanguageNameCheck
             "spelling can only be seen next to the first.";
         Run = "Check names";
         Working = "Reading the dialogue...";
+        CheckingOriginal = "Checking the original language...";
         DoneXNamesYLines = "Done - {0} names, {1} lines to change";
         PinAccepted = "Remember these spellings for this series";
         PinAcceptedInfo =
             "Accepted spellings are added to the shared glossary, so the translator uses them for " +
             "the next film in the series. Only names whose original form is known can be saved.";
         NotPinnable = "original form unknown - fixes the file only";
+        NotAPerson = "not a person in the original - fixes the file only";
+        SpellingDoubted = "the original does not sound like this - check before applying";
         EditPromptTitle = "Edit name-check prompt";
         PromptInfo =
             "Instructions sent to the model. {language} is replaced with the subtitle language. " +

@@ -68,10 +68,28 @@ public partial class NameCheckViewModel : ObservableObject
     /// <summary>Which finding produced each suggestion, so an accepted one can teach the glossary.</summary>
     private readonly Dictionary<int, NameFinding> _findingByIndex = new();
 
+    /// <summary>
+    /// Names the second pass judged not to be people. ★Keyed by the chosen spelling, the same key the
+    /// second pass answers on, and consulted only at pin time - the line fix still stands, because two
+    /// spellings of one word are still worth making consistent.
+    /// </summary>
+    private readonly HashSet<string> _notAPerson = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Names where the original language does not support the spelling the first pass chose.
+    /// ★Measured: the model offered 히노코리 씨 as canonical and 히노보리 씨 as the mistake, while the
+    ///   original said ひのぼり - so the "fix" would have written the wrong reading over the right one,
+    ///   and with the original form now filled in it would also have been remembered. These rows are
+    ///   shown, explained and left UNCHECKED rather than hidden: the pass is still right that the file
+    ///   spells one person two ways, and the user is the one who can see which way is right.
+    /// </summary>
+    private readonly HashSet<string> _spellingDoubted = new(StringComparer.Ordinal);
+
     private Subtitle _subtitle = new();
     private string _languageCode = "ko";
     private string _seriesPrefix = string.Empty;
     private string _filmContext = string.Empty;
+    private OriginalDialogue? _originalDialogue;
     private CancellationTokenSource _cancellationTokenSource = new();
 
     public NameCheckViewModel(IWindowService windowService)
@@ -107,6 +125,11 @@ public partial class NameCheckViewModel : ObservableObject
         var code = JavCatalog.ResolveCode(videoFileName);
         _seriesPrefix = JavDataPaths.SeriesPrefix(code);
         _filmContext = BuildFilmContext(videoFileName, code, _seriesPrefix);
+
+        // The same film in its original language, if it is on disk and its timecodes line up. This is
+        // what lets a finding be pinned at all - see OriginalDialogue for why it refuses more than it
+        // accepts.
+        _originalDialogue = OriginalDialogue.For(subtitle, videoFileName, _languageCode);
     }
 
     private static string BuildFilmContext(string? videoFileName, string code, string seriesPrefix)
@@ -234,8 +257,16 @@ public partial class NameCheckViewModel : ObservableObject
             var findings = NameCheckProtocol.ParseNames(reply);
             var replacements = NameCheckProtocol.BuildReplacements(_subtitle, findings);
 
+            // ★The second pass runs before the rows are built, so each row's reason already reflects
+            //   what the original language said. Only what survived into a replacement is asked about -
+            //   a finding that changes no line is never pinned either.
+            var resolved = await ResolveOriginalFormsAsync(findings, replacements, url, model, apiKey, ct);
+
             foreach (var replacement in replacements)
             {
+                var finding = resolved.TryGetValue(replacement.Finding.Korean, out var updated)
+                    ? updated
+                    : replacement.Finding;
                 var item = new ReviewSuggestionItem
                 {
                     Number = replacement.Number,
@@ -244,11 +275,11 @@ public partial class NameCheckViewModel : ObservableObject
                     Category = ReviewCategory.Spelling,
                     Before = replacement.Before,
                     After = replacement.After,
-                    Reason = BuildReason(replacement.Finding, ln),
-                    IsSelected = true,
+                    Reason = BuildReason(finding, ln),
+                    IsSelected = !_spellingDoubted.Contains(finding.Korean),
                 };
                 _allSuggestions.Add(item);
-                _findingByIndex[replacement.ParagraphIndex] = replacement.Finding;
+                _findingByIndex[replacement.ParagraphIndex] = finding;
                 Suggestions.Add(item);
                 item.PropertyChanged += (_, e) =>
                 {
@@ -283,14 +314,138 @@ public partial class NameCheckViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Asks the original-language subtitle what these names are really written as, and whether they
+    /// are names at all.
+    ///
+    /// ★Why a second call rather than more instructions in the first: the first pass only ever sees
+    ///   the translation, and no prompt can make it read a spelling it was never shown. Measured, half
+    ///   the findings that survived the guards could not be pinned for exactly that reason.
+    ///
+    /// ★Why it also classifies: filling in the original form REMOVES the accident that was protecting
+    ///   the glossary. A measured case - 베피슨 / 베핀 - is べっぴん, "a beauty", misheard by the ASR;
+    ///   the merge was right and the category was wrong, and the only thing that kept a common noun
+    ///   out of a name glossary was the empty source. With the source filled in, that gate opens. So
+    ///   the same call that opens it is the one asked to close it, and it can answer well because it
+    ///   is looking at the original word rather than at a transliteration of it.
+    ///
+    /// Returns findings keyed by their chosen spelling. Everything here is fail-soft: no
+    /// original-language subtitle, a refused one, an unparsable reply or a dropped connection all leave
+    /// the findings exactly as the first pass produced them.
+    /// </summary>
+    private async Task<Dictionary<string, NameFinding>> ResolveOriginalFormsAsync(
+        IReadOnlyList<NameFinding> findings, IReadOnlyList<NameReplacement> replacements,
+        string url, string model, string? apiKey, CancellationToken ct)
+    {
+        var resolved = new Dictionary<string, NameFinding>(StringComparer.Ordinal);
+        foreach (var finding in findings)
+        {
+            resolved[finding.Korean] = finding;
+        }
+
+        if (_originalDialogue == null || replacements.Count == 0)
+        {
+            return resolved;
+        }
+
+        var linesByName = new Dictionary<string, List<(string Translated, string Original)>>(StringComparer.Ordinal);
+        foreach (var replacement in replacements)
+        {
+            var original = _originalDialogue.TextAt(
+                replacement.ParagraphIndex >= 0 && replacement.ParagraphIndex < _subtitle.Paragraphs.Count
+                    ? _subtitle.Paragraphs[replacement.ParagraphIndex]
+                    : null);
+            if (original.Length == 0)
+            {
+                continue;
+            }
+
+            if (!linesByName.TryGetValue(replacement.Finding.Korean, out var lines))
+            {
+                lines = new List<(string, string)>();
+                linesByName[replacement.Finding.Korean] = lines;
+            }
+
+            if (lines.Count < NameCheckProtocol.MaxLinesPerQuestion)
+            {
+                lines.Add((replacement.After.Replace(Environment.NewLine, " "), original));
+            }
+        }
+
+        if (linesByName.Count == 0)
+        {
+            return resolved;
+        }
+
+        var questions = linesByName
+            .Select(kvp => new OriginalFormQuestion(kvp.Key, kvp.Value))
+            .Take(NameCheckProtocol.MaxOriginalFormQuestions)
+            .ToList();
+
+        StatusText = Se.Language.Tools.NameCheck.CheckingOriginal;
+        string answer;
+        try
+        {
+            using var client = new AiReviewClient();
+            answer = await client.ChatAsync(url, model,
+                NameCheckProtocol.OriginalFormPrompt,
+                NameCheckProtocol.BuildOriginalFormRequest(questions), ct, apiKey);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // The first pass already produced usable suggestions; losing the second is not a failure
+            // worth a dialog. It only means nothing gets pinned.
+            return resolved;
+        }
+
+        var forms = NameCheckProtocol.ParseOriginalForms(answer ?? string.Empty);
+        foreach (var question in questions)
+        {
+            if (!forms.TryGetValue(question.Korean, out var form) ||
+                !resolved.TryGetValue(question.Korean, out var finding))
+            {
+                continue;
+            }
+
+            resolved[question.Korean] = NameCheckProtocol.WithOriginalForm(
+                finding, form, question.Lines.Select(l => l.Original));
+            if (!form.IsName)
+            {
+                _notAPerson.Add(question.Korean);
+            }
+
+            if (!form.ChosenSpellingFits)
+            {
+                _spellingDoubted.Add(question.Korean);
+            }
+        }
+
+        return resolved;
+    }
+
     /// <summary>★Says outright when a fix cannot be remembered, so "remember these" is never a
-    /// promise the tool silently fails to keep.</summary>
+    /// promise the tool silently fails to keep - and says WHICH reason, because "we do not know the
+    /// original" and "this is not a person" call for different things from the user.</summary>
     private string BuildReason(NameFinding finding, Logic.Config.Language.Tools.LanguageNameCheck ln)
     {
         var reason = finding.Reason;
         if (finding.Source.Length > 0)
         {
             reason = finding.Source + " -> " + finding.Korean + (reason.Length > 0 ? " - " + reason : string.Empty);
+        }
+
+        if (_spellingDoubted.Contains(finding.Korean))
+        {
+            return (reason + " (" + ln.SpellingDoubted + ")").Trim();
+        }
+
+        if (_notAPerson.Contains(finding.Korean))
+        {
+            return (reason + " (" + ln.NotAPerson + ")").Trim();
         }
 
         return NameCheckProtocol.CanPin(finding) ? reason : (reason + " (" + ln.NotPinnable + ")").Trim();
@@ -377,6 +532,13 @@ public partial class NameCheckViewModel : ObservableObject
             {
                 if (!_findingByIndex.TryGetValue(item.ParagraphIndex, out var finding) ||
                     !NameCheckProtocol.CanPin(finding) ||
+                    // ★The original language said this is not a person. The line still gets fixed;
+                    //   the glossary does not learn a common noun as somebody's name.
+                    _notAPerson.Contains(finding.Korean) ||
+                    // ★And it said this spelling is not what the original sounds like. The user can
+                    //   still choose to apply it, but a spelling the original contradicts is never
+                    //   written to the glossary - it would outlive every later attempt to fix it.
+                    _spellingDoubted.Contains(finding.Korean) ||
                     !pinned.Add(finding.Source))
                 {
                     continue;
@@ -401,6 +563,8 @@ public partial class NameCheckViewModel : ObservableObject
     {
         _allSuggestions.Clear();
         _findingByIndex.Clear();
+        _notAPerson.Clear();
+        _spellingDoubted.Clear();
         Suggestions.Clear();
         UpdateSummary();
     }

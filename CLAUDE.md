@@ -303,6 +303,7 @@ rather than re-deriving anything.
 | 4 | Writing back: guidebook (`pinned`) and glossary (`JavTerms.Pin`); the translator's `terms` gained a `pinned` column so a machine cannot overwrite a person's choice |
 | 5 | Deterministic name back-check — **built, measured, and abandoned**; 5′ injected settled spellings into AI review instead |
 | 6 | `Features/Tools/NameCheck/` — the LLM name-consistency pass; menu inventory **145 → 146** |
+| 7 | `Features/Tools/NameCheck/OriginalDialogue.cs` — reads the film's own original-language subtitle so a name fix can be pinned at all, and gates pinning on what it says |
 
 Hard-won facts — do not re-derive:
 
@@ -326,6 +327,23 @@ Hard-won facts — do not re-derive:
 - **Name-check pin rate is a metadata-coverage function, not a model-quality one.** Measured over 8
   real subtitles against a hosted model: 5 files found nothing, 4 findings survived the guards, 2
   were pinnable. The two that were pinnable had the original form because a *video tag* supplied it.
+- **The language code in a subtitle's file name is a lie about a third of the time.** Measured over
+  400 files named `*.ja.srt`: 257 Japanese, **124 Chinese**, 16 romanised, 3 Korean —
+  `JUL-224.zh.ja.srt` and `JUR-268-zh-tw-繁中.ja.srt` are real names. Anything that reads "the
+  original language" off a file name will read Chinese a third of the time; a live run wrote 希米卡
+  over the correct 由美香 exactly this way. Kana share separates them cleanly (bimodal: 0-5% for 142
+  of them, 70-100% for 256, one file anywhere in between).
+- **Translation preserves timecodes, so aligning two subtitles is exact or wrong — never fuzzy.**
+  Median share of cues matching within 100 ms: 98%; widening the window to 2 s leaves that median at
+  98% and only lets wrong lines match. A subtitle does not record which file it was translated from,
+  so the match rate itself is the test of whether the right file was picked: real sources score
+  61-100%, wrong cuts 1-11%.
+- **Stage 7 is a correctness feature, not a productivity one, and the docs say so.** Filling in the
+  original form removed the accident that had been protecting the glossary (an empty source), so the
+  same call that fills it is asked to classify too. Two runs over the same 8 films gave 3 pinnable
+  names then 1 — the first pass is non-deterministic, so no pin-rate claim is available. What is
+  measured: on the one film where the check could run, **2 of 2 findings had the direction reversed**
+  (히노코리 offered as correct over 히노보리, while the original said ひのぼり).
 - The three name-check guards each came from an observed failure: un-deduplicated text hit the
   40,000-char cap at line ~3,000 of a 6,582-line file (everything after was never examined);
   replacing a string with one that contains it self-feeds (`사카미치 사카미치 미루 사카미치 미루`);

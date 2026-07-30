@@ -2,6 +2,7 @@ using Nikse.SubtitleEdit.Core.Common;
 using Nikse.SubtitleEdit.Features.Tools.AiReview;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 
@@ -12,6 +13,16 @@ public sealed record NameFinding(string Source, string Korean, IReadOnlyList<str
 
 /// <summary>One line the editor will change, worked out here rather than by the model.</summary>
 public sealed record NameReplacement(int ParagraphIndex, int Number, string Before, string After, NameFinding Finding);
+
+/// <summary>
+/// What the second pass says about one name once it has seen the original-language line: how the
+/// original spells it, whether it is a name at all, and whether the spelling the first pass chose is
+/// a faithful reading of that original.
+/// </summary>
+public sealed record OriginalForm(string Source, bool IsName, bool ChosenSpellingFits);
+
+/// <summary>One name, with the lines that mention it in both languages, for the second pass.</summary>
+public sealed record OriginalFormQuestion(string Korean, IReadOnlyList<(string Translated, string Original)> Lines);
 
 /// <summary>
 /// Fork addition. The wire format for the name pass.
@@ -249,6 +260,133 @@ public static class NameCheckProtocol
         }
 
         return true;
+    }
+
+    // ─── The second pass: what the original language calls this person ────────────────────────────
+
+    /// <summary>Names asked about in one request. Keeps the second call small and its answer readable.</summary>
+    public const int MaxOriginalFormQuestions = 12;
+
+    /// <summary>Line pairs shown per name. Three occurrences are plenty to read a spelling off.</summary>
+    public const int MaxLinesPerQuestion = 3;
+
+    public const string OriginalFormPrompt =
+        "You are given names as a subtitle's translation spells them, and for each one the lines that " +
+        "mention it - both the translated line and the SAME line in the film's original language, " +
+        "matched by timestamp.\n\n" +
+        "For each name, answer two things.\n" +
+        "1. \"src\" - how the ORIGINAL language writes it, copied VERBATIM from the original line. If " +
+        "the original line does not contain it, or you cannot tell which part of the line it is, leave " +
+        "\"src\" empty. Never romanise it, never translate it, and never reconstruct it from the " +
+        "translation - an invented original is worse than none.\n" +
+        "2. \"isName\" - true only if this is a person: a given name, family name, nickname, or a name " +
+        "with a form of address attached. false for anything else, including ordinary words, titles " +
+        "with nobody attached, places, products and brands. A word that merely LOOKS like a name in " +
+        "the translation is often a common word in the original - that is exactly what the original " +
+        "line is here to settle.\n" +
+        "3. \"fits\" - whether the name you were given is a faithful reading of the original: does it " +
+        "sound like the original, syllable for syllable? Answer false when it does not, even slightly. " +
+        "ひのぼり read as 히노코리 is false; ひのぼり read as 히노보리 is true. You are not being asked " +
+        "for a better spelling - only whether this one matches what the original says.\n\n" +
+        "Answer with ONLY a JSON object, no other text: " +
+        "{\"names\":[{\"ko\":\"<the name as given to you, copied exactly>\",\"src\":\"<original form or " +
+        "empty>\",\"isName\":true,\"fits\":true}]}. Include every name you were asked about.";
+
+    public static string BuildOriginalFormRequest(IReadOnlyList<OriginalFormQuestion> questions)
+    {
+        var sb = new StringBuilder();
+        foreach (var question in questions.Take(MaxOriginalFormQuestions))
+        {
+            sb.Append("NAME: ").Append(question.Korean).Append('\n');
+            foreach (var (translated, original) in question.Lines.Take(MaxLinesPerQuestion))
+            {
+                sb.Append("  translated: ").Append(translated).Append('\n');
+                sb.Append("  original:   ").Append(original).Append('\n');
+            }
+
+            sb.Append('\n');
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Keyed by the name as it was asked about. ★A reply about a name that was not asked is dropped by
+    /// the caller looking up its own keys, so an invented entry cannot reach the glossary.
+    /// </summary>
+    public static Dictionary<string, OriginalForm> ParseOriginalForms(string responseText)
+    {
+        var result = new Dictionary<string, OriginalForm>(StringComparer.Ordinal);
+        var json = AiReviewProtocol.ExtractJsonObject(responseText);
+        if (json == null)
+        {
+            return result;
+        }
+
+        using var document = JsonDocument.Parse(json);
+        if (!document.RootElement.TryGetProperty("names", out var array) || array.ValueKind != JsonValueKind.Array)
+        {
+            return result;
+        }
+
+        foreach (var element in array.EnumerateArray())
+        {
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var korean = ReadString(element, "ko");
+            if (korean.Length == 0)
+            {
+                continue;
+            }
+
+            // ★The two flags default in OPPOSITE directions, and the asymmetry is deliberate.
+            //
+            //   "isName" absent counts as FALSE: it gates a silent write into data the translator then
+            //   trusts, so a malformed answer must not open that gate. The file still gets fixed.
+            //
+            //   "fits" absent counts as TRUE: it raises a visible objection to a suggestion the first
+            //   pass made, and absence is no signal. Manufacturing an objection out of a missing field
+            //   would unselect good suggestions every time a model skipped the key.
+            var isName = element.TryGetProperty("isName", out var flag) && flag.ValueKind == JsonValueKind.True;
+            var fits = !element.TryGetProperty("fits", out var fitsFlag) || fitsFlag.ValueKind != JsonValueKind.False;
+            result[korean] = new OriginalForm(ReadString(element, "src"), isName, fits);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// The finding with the second pass's answer folded in.
+    ///
+    /// ★The second pass FILLS an unknown source; it never replaces a known one. Measured the hard way:
+    ///   on a film whose video tag had already given the first pass 由美香, the second pass answered
+    ///   希米卡 - a Chinese transliteration, read out of a subtitle that was named <c>.ja.srt</c> but
+    ///   written in Chinese. The mislabelled file is refused elsewhere now, but the rule stands on its
+    ///   own: the first pass's source comes from the film's own credits, and a second opinion drawn
+    ///   from one line of dialogue is not grounds to overwrite that.
+    ///
+    /// ★A source the original line does not actually contain is refused: the instructions forbid
+    ///   reconstructing one, and this is where that is enforced rather than trusted.
+    /// </summary>
+    public static NameFinding WithOriginalForm(NameFinding finding, OriginalForm form, IEnumerable<string> originalLines)
+    {
+        if (form.Source.Length == 0 || finding.Source.Length > 0)
+        {
+            return finding;
+        }
+
+        foreach (var line in originalLines)
+        {
+            if (line.Contains(form.Source, StringComparison.Ordinal))
+            {
+                return finding with { Source = form.Source };
+            }
+        }
+
+        return finding;
     }
 
     private static readonly string[] Honorifics = ["선생님", "짱", "씨", "군", "님", "상"];
