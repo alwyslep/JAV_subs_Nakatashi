@@ -41,6 +41,22 @@ public sealed class SpeakerContextResult
 
     /// <summary>True when a human's version is on record and must not be silently replaced.</summary>
     public bool IsHumanWritten => Source == SpeakerContextSource.GuidebookPinned;
+
+    /// <summary>
+    /// Whether <see cref="Note"/> is actually per-speaker RULES, as opposed to evidence to derive them
+    /// from.
+    ///
+    /// ★This distinction has to be visible to callers, and the first live run of the window is why.
+    ///   The relationship box is a user-editable field whose contents get pinned to the film's
+    ///   guidebook, and it was being pre-filled with whatever this returned - including the tag block,
+    ///   whose first line is an English instruction to the model ("No per-speaker rules were recorded
+    ///   for this film...") followed by a raw dump of title, genre and cast. Two things went wrong at
+    ///   once: a Korean UI showed English boilerplate in an input box, and one keystroke from the user
+    ///   would have saved that boilerplate as a PINNED guidebook - the one thing the translator's
+    ///   prescan may never overwrite. Rules belong in the box; evidence belongs only in the prompt.
+    /// </summary>
+    public bool IsRules =>
+        Source is SpeakerContextSource.GuidebookPinned or SpeakerContextSource.Guidebook;
 }
 
 /// <summary>

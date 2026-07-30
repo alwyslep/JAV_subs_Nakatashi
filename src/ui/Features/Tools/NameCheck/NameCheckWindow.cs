@@ -197,6 +197,21 @@ public class NameCheckWindow : Window
 
         var borderGrid = UiUtil.MakeBorderForControlNoPadding(dataGrid);
 
+        // ★The reason has to be readable somewhere. In the grid it is one clipped line - the first live
+        //   run showed "流川夕 → 루카와 유 - The surname 루카와 w…" and there was no way to see the rest.
+        //   The reason is exactly where this window explains itself: why a spelling was chosen, whether
+        //   it can be remembered, and whether the direction was reversed and by which authority. AI
+        //   review puts it under the grid for the same reason; this matches it.
+        var selectedReason = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.85,
+            FontSize = 12,
+            MaxLines = 3,
+        };
+        selectedReason.Bind(TextBlock.TextProperty, new Binding(nameof(vm.SelectedReasonText)));
+        selectedReason.Bind(IsVisibleProperty, new Binding(nameof(vm.IsSelectedReasonVisible)));
+
         // ---------- bottom bar ----------
         var statusText = MakeBoundTextBlock(nameof(vm.StatusText));
         statusText.Opacity = 0.8;
@@ -251,6 +266,7 @@ public class NameCheckWindow : Window
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
             },
             ColumnDefinitions = { new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) } },
             Margin = UiUtil.MakeWindowMargin(),
@@ -261,8 +277,9 @@ public class NameCheckWindow : Window
         grid.Add(engineRow, 0, 0);
         grid.Add(optionRow, 1, 0);
         grid.Add(borderGrid, 2, 0);
-        grid.Add(statusRow, 3, 0);
-        grid.Add(bottomBar, 4, 0);
+        grid.Add(selectedReason, 3, 0);
+        grid.Add(statusRow, 4, 0);
+        grid.Add(bottomBar, 5, 0);
 
         Content = grid;
 

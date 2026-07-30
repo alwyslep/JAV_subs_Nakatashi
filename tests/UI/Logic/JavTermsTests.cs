@@ -320,6 +320,38 @@ public class JavTermsTests
         }
     }
 
+    // ★A pinned spelling is often the ONLY candidate the glossary has seen - the wrong reading was
+    //   never harvested, so there is nothing to count it against. Found by pinning 聖一郎 -> 세이이치로
+    //   and noticing that a caller requiring two ranked entries would refuse to correct 성일랑 back to
+    //   it. Honorifics are stripped, so the bare pin answers for 님, 씨 and 군 alike.
+    [Fact]
+    public void RankSpellings_ReturnsThePinnedReadingEvenAsTheOnlyOneItKnows()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "terms-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var saved = Se.Settings.JavData;
+        try
+        {
+            Se.Settings.JavData = new SeJavData
+            {
+                TermsDbPath = MakeGlossary(folder, ("APNS", "聖一郎", "세이이치로", 1)),
+            };
+
+            foreach (var wrong in new[] { "성일랑 님", "성일랑 씨", "성일랑" })
+            {
+                var ranked = JavTerms.RankSpellings("APNS", [wrong, "세이이치로 님"]);
+                Assert.Single(ranked);
+                Assert.Equal("세이이치로 님", ranked[0].Spelling);
+                Assert.True(ranked[0].Pinned);
+            }
+        }
+        finally
+        {
+            Se.Settings.JavData = saved;
+            Cleanup(folder);
+        }
+    }
+
     // ★No opinion is the common case, and it must read as "no opinion" rather than "all wrong".
     [Fact]
     public void RankSpellings_IsEmptyWhenTheGlossaryKnowsNeither()

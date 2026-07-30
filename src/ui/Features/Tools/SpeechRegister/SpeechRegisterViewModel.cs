@@ -88,6 +88,12 @@ public partial class SpeechRegisterViewModel : ObservableObject
     /// <summary>What <see cref="LoadRelationshipNote"/> put in the box, to tell an edit from a no-op.</summary>
     private string _noteAsLoaded = string.Empty;
 
+    /// <summary>
+    /// The film's own description, when that is all we have. Reaches the model but never the box, so it
+    /// cannot be pinned as though a person had written it.
+    /// </summary>
+    private string _promptEvidence = string.Empty;
+
     public SpeechRegisterViewModel(IWindowService windowService)
     {
         _windowService = windowService;
@@ -156,11 +162,28 @@ public partial class SpeechRegisterViewModel : ObservableObject
     {
         var context = SpeakerContext.Resolve(videoFileName);
         _workCode = context.Code;
-        _noteAsLoaded = context.Note;
+        _promptEvidence = string.Empty;
 
+        // ★Only real per-speaker RULES go in the box, because whatever is in the box can be saved to
+        //   this film's guidebook as a pin. The film's tags and catalogue entry are evidence, not
+        //   rules: they arrive as an English instruction to the model followed by a title/genre/cast
+        //   dump, and pre-filling that meant a Korean UI showed English boilerplate in an input field
+        //   AND one keystroke would have pinned it. See SpeakerContextResult.IsRules.
+        if (context.IsRules)
+        {
+            _noteAsLoaded = context.Note;
+            RelationshipNote = context.Note;
+            NoteSourceText = DescribeSource(context.Source);
+            return;
+        }
+
+        _noteAsLoaded = string.Empty;
         if (!context.IsEmpty)
         {
-            RelationshipNote = context.Note;
+            // Evidence exists but no rules. The box stays empty so its watermark can show the shape of
+            // an answer; the evidence still reaches the model, and the source line still says it is there.
+            _promptEvidence = context.Note;
+            RelationshipNote = string.Empty;
             NoteSourceText = DescribeSource(context.Source);
             return;
         }
@@ -168,6 +191,21 @@ public partial class SpeechRegisterViewModel : ObservableObject
         // Nothing known about this film - fall back to the old global note.
         RelationshipNote = Se.Settings.Tools.SpeechRegister.RelationshipNote;
         NoteSourceText = string.Empty;
+    }
+
+    /// <summary>
+    /// What the model is told about this film beyond the user's own rules: the tag or catalogue block,
+    /// after the rules and never instead of them.
+    /// </summary>
+    private string BuildNotesForPrompt()
+    {
+        var rules = (RelationshipNote ?? string.Empty).Trim();
+        if (_promptEvidence.Length == 0)
+        {
+            return rules;
+        }
+
+        return rules.Length == 0 ? _promptEvidence : rules + "\n\n" + _promptEvidence;
     }
 
     private static string DescribeSource(SpeakerContextSource source)
@@ -349,7 +387,8 @@ public partial class SpeechRegisterViewModel : ObservableObject
 
         var chunks = SpeechRegisterChunkBuilder.Build(lines, _selectedNumbers, Se.Settings.Tools.SpeechRegister.MaxLinesPerBatch);
         var systemPrompt = SpeechRegisterPrompt.BuildSystemPrompt(
-            SpeechRegisterPrompt.EffectivePrompt(), CurrentLevel(), RelationshipNote, GetLanguageDisplayName(_languageCode));
+            SpeechRegisterPrompt.EffectivePrompt(), CurrentLevel(), BuildNotesForPrompt(),
+            GetLanguageDisplayName(_languageCode));
 
         using var client = new AiReviewClient();
         var processed = 0;

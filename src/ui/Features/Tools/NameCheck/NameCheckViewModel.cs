@@ -53,6 +53,8 @@ public partial class NameCheckViewModel : ObservableObject
     [ObservableProperty] private bool _isRunning;
     [ObservableProperty] private bool _isNotRunning = true;
     [ObservableProperty] private bool _pinAccepted;
+    [ObservableProperty] private string _selectedReasonText = string.Empty;
+    [ObservableProperty] private bool _isSelectedReasonVisible;
     [ObservableProperty] private string _statusText;
     [ObservableProperty] private string _summaryText;
     [ObservableProperty] private string _applyButtonText;
@@ -174,6 +176,15 @@ public partial class NameCheckViewModel : ObservableObject
     partial void OnSelectedEngineChanged(string value) => UpdateEngineVisibility();
 
     partial void OnIsRunningChanged(bool value) => IsNotRunning = !value;
+
+    /// <summary>★The reason is where this window explains itself, and in the grid it is one clipped
+    /// line - the first live run showed "流川夕 → 루카와 유 - The surname 루카와 w…" with no way to read
+    /// the rest.</summary>
+    partial void OnSelectedSuggestionChanged(ReviewSuggestionItem? value)
+    {
+        SelectedReasonText = value?.Reason ?? string.Empty;
+        IsSelectedReasonVisible = SelectedReasonText.Length > 0;
+    }
 
     private void UpdateEngineVisibility()
     {
@@ -508,12 +519,20 @@ public partial class NameCheckViewModel : ObservableObject
         var candidates = new List<string> { finding.Korean };
         candidates.AddRange(finding.Wrong);
         var ranked = JavTerms.RankSpellings(_seriesPrefix, candidates);
-        if (ranked.Count < 2 || string.Equals(ranked[0].Spelling, finding.Korean, StringComparison.Ordinal))
+        if (ranked.Count == 0 || string.Equals(ranked[0].Spelling, finding.Korean, StringComparison.Ordinal))
         {
             return null;
         }
 
-        var decisive = ranked[0].Pinned || ranked[0].Rows > ranked[1].Rows;
+        // ★A pinned spelling needs no comparison - it is a person's decision, and it wins even when it
+        //   is the only candidate the glossary has ever seen. Found by pinning 聖一郎 -> 세이이치로 and
+        //   noticing that a "count >= 2" guard would have refused to correct 성일랑 back to it, because
+        //   the wrong reading was in no glossary row to be counted against.
+        //
+        // ★An UNPINNED row still needs a rival to beat. "I have seen this spelling and never the other"
+        //   is weak evidence when the glossary is machine-harvested - that is how タキモス got in there
+        //   in the first place.
+        var decisive = ranked[0].Pinned || (ranked.Count >= 2 && ranked[0].Rows > ranked[1].Rows);
         return decisive ? NameCheckProtocol.SwapDirection(finding, ranked[0].Spelling) : null;
     }
 
