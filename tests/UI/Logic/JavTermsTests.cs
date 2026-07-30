@@ -83,6 +83,153 @@ public class JavTermsTests
         Assert.False(JavTerms.Pin(series, source, korean));
     }
 
+    /// <summary>
+    /// ★Microsoft.Data.Sqlite pools connections, so the file stays open after the last one is
+    ///   disposed and the folder cannot be removed. Clearing the pool is the documented way out; a
+    ///   leftover temp folder is still not worth failing a test over.
+    /// </summary>
+    private static void Cleanup(string folder)
+    {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        try
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Nothing to do about it, and nothing broken by it.
+        }
+    }
+
+    /// <summary>A glossary with just enough of the real shape to answer these questions.</summary>
+    private static string MakeGlossary(string folder, params (string Series, string Src, string Ko, int Pinned)[] rows)
+    {
+        var path = Path.Combine(folder, "jav-terms.sqlite");
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=" + path);
+        connection.Open();
+        using (var create = connection.CreateCommand())
+        {
+            create.CommandText =
+                "create table terms(id integer primary key, series text not null default '', " +
+                "src text not null, ko text not null, anchor integer not null default 0, " +
+                "quality text not null default 'ok', curated text, first_seen text, " +
+                "last_seen text, pinned integer not null default 0)";
+            create.ExecuteNonQuery();
+        }
+
+        var order = 0;
+        foreach (var (series, src, ko, pinned) in rows)
+        {
+            using var insert = connection.CreateCommand();
+            insert.CommandText =
+                "insert into terms(series, src, ko, pinned, last_seen) values($s, $src, $ko, $p, $seen)";
+            insert.Parameters.AddWithValue("$s", series);
+            insert.Parameters.AddWithValue("$src", src);
+            insert.Parameters.AddWithValue("$ko", ko);
+            insert.Parameters.AddWithValue("$p", pinned);
+            insert.Parameters.AddWithValue("$seen", $"2020-01-01 00:00:{order++:00}");
+            insert.ExecuteNonQuery();
+        }
+
+        return path;
+    }
+
+    /// <summary>
+    /// ★The honorific filter is a quality PROXY - measured to keep this layer free of the
+    ///   machine-translation pollution the rest of the glossary carries. A row a person pinned is not a
+    ///   proxy for quality, it is the thing itself, so the proxy must not exclude it.
+    ///
+    /// Found by pinning 由美香 -> 유미카 for real and watching the editor fail to read back what it had
+    /// just written, because a given name carries no honorific.
+    /// </summary>
+    [Fact]
+    public void AddressForms_ReadsBackAPinnedRowThatCarriesNoHonorific()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "terms-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var saved = Se.Settings.JavData;
+        try
+        {
+            var path = MakeGlossary(folder,
+                ("NSFS", "由美香", "유미카", 1),          // pinned, no honorific
+                ("NSFS", "美咲", "미사키", 0),            // same shape, not pinned
+                ("NSFS", "佐々木さん", "사사키 씨", 0));    // an ordinary address form
+            Se.Settings.JavData = new SeJavData { TermsDbPath = path };
+
+            var forms = JavTerms.AddressForms("NSFS");
+
+            Assert.Contains(forms, f => f.Source == "由美香" && f.Korean == "유미카");
+            Assert.Contains(forms, f => f.Source == "佐々木さん");
+            Assert.DoesNotContain(forms, f => f.Source == "美咲");
+        }
+        finally
+        {
+            Se.Settings.JavData = saved;
+            Cleanup(folder);
+        }
+    }
+
+    // ★And it is read back FIRST, so a person's choice cannot be crowded out of the 24-row budget by
+    //   rows the machine harvested.
+    [Fact]
+    public void AddressForms_PutsPinnedRowsAheadOfHarvestedOnes()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "terms-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var saved = Se.Settings.JavData;
+        try
+        {
+            var rows = Enumerable.Range(0, JavTerms.MaxAddressForms + 6)
+                .Select(i => ("NSFS", $"田中{i}さん", $"타나카{i} 씨", 0))
+                .Append(("NSFS", "ひのぼりさん", "히노보리 씨", 1))
+                .ToArray();
+            Se.Settings.JavData = new SeJavData { TermsDbPath = MakeGlossary(folder, rows) };
+
+            var forms = JavTerms.AddressForms("NSFS");
+
+            Assert.Equal(JavTerms.MaxAddressForms, forms.Count);
+            Assert.Equal("ひのぼりさん", forms[0].Source);
+        }
+        finally
+        {
+            Se.Settings.JavData = saved;
+            Cleanup(folder);
+        }
+    }
+
+    // ★An older glossary has no pinned column. Losing the ordering is acceptable; losing the layer is
+    //   not - the fallback query exists so the feature degrades instead of disappearing.
+    [Fact]
+    public void AddressForms_StillWorksOnAGlossaryWithoutThePinnedColumn()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "terms-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var saved = Se.Settings.JavData;
+        try
+        {
+            var path = Path.Combine(folder, "jav-terms.sqlite");
+            using (var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=" + path))
+            {
+                connection.Open();
+                using var command = connection.CreateCommand();
+                command.CommandText =
+                    "create table terms(id integer primary key, series text, src text, ko text, " +
+                    "anchor integer default 0, quality text default 'ok', last_seen text);" +
+                    "insert into terms(series, src, ko) values('NSFS', '佐々木さん', '사사키 씨')";
+                command.ExecuteNonQuery();
+            }
+
+            Se.Settings.JavData = new SeJavData { TermsDbPath = path };
+
+            Assert.Contains(JavTerms.AddressForms("NSFS"), f => f.Source == "佐々木さん");
+        }
+        finally
+        {
+            Se.Settings.JavData = saved;
+            Cleanup(folder);
+        }
+    }
+
     [Fact]
     public void Pin_RefusesWhenTheGlossaryIsNotThere()
     {

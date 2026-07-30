@@ -56,35 +56,54 @@ public static class JavTerms
             return Array.Empty<JavTermPair>();
         }
 
-        try
-        {
-            using var command = connection.CreateCommand();
-            // quality='ok' skips what the curate pass demoted; anchor rows are prompt style
-            // examples rather than lookups and are excluded for the same reason the translator
-            // excludes them from its own seed.
-            command.CommandText =
-                "select src, ko from " + TableName +
-                " where series = $series and quality = 'ok' and anchor = 0 order by last_seen desc";
-            command.Parameters.AddWithValue("$series", prefix);
+        // quality='ok' skips what the curate pass demoted; anchor rows are prompt style examples
+        // rather than lookups and are excluded for the same reason the translator excludes them from
+        // its own seed.
+        //
+        // ★A pinned row is read back whatever it looks like, and it is read back FIRST.
+        //   The honorific filter below is a quality proxy - measured to keep this layer free of the
+        //   machine-translation pollution the rest of the glossary carries. A row a person pinned is
+        //   not a proxy for quality, it is the thing itself, so the proxy must not exclude it. Found
+        //   by pinning 由美香 -> 유미카 and watching the editor fail to read back what it had just
+        //   written, because a given name carries no honorific. Ordering pinned first also stops a
+        //   person's choice being crowded out of the 24-row budget by harvested rows.
+        const string PinnedAware =
+            "select src, ko, pinned from " + TableName +
+            " where series = $series and quality = 'ok' and anchor = 0 order by pinned desc, last_seen desc";
+        // An older glossary has no pinned column. Losing the ordering is fine; losing the layer is not.
+        const string Legacy =
+            "select src, ko, 0 as pinned from " + TableName +
+            " where series = $series and quality = 'ok' and anchor = 0 order by last_seen desc";
 
-            var found = new List<JavTermPair>();
-            using var reader = command.ExecuteReader();
-            while (reader.Read() && found.Count < max)
+        foreach (var sql in new[] { PinnedAware, Legacy })
+        {
+            try
             {
-                var source = JavDb.GetText(reader, 0).Trim();
-                var korean = JavDb.GetText(reader, 1).Trim();
-                if (IsAddressForm(source, korean))
-                {
-                    found.Add(new JavTermPair { Source = source, Korean = korean });
-                }
-            }
+                using var command = connection.CreateCommand();
+                command.CommandText = sql;
+                command.Parameters.AddWithValue("$series", prefix);
 
-            return found;
+                var found = new List<JavTermPair>();
+                using var reader = command.ExecuteReader();
+                while (reader.Read() && found.Count < max)
+                {
+                    var source = JavDb.GetText(reader, 0).Trim();
+                    var korean = JavDb.GetText(reader, 1).Trim();
+                    if (JavDb.GetBool(reader, 2) || IsAddressForm(source, korean))
+                    {
+                        found.Add(new JavTermPair { Source = source, Korean = korean });
+                    }
+                }
+
+                return found;
+            }
+            catch
+            {
+                // Fall through to the legacy shape, then give up.
+            }
         }
-        catch
-        {
-            return Array.Empty<JavTermPair>();
-        }
+
+        return Array.Empty<JavTermPair>();
     }
 
     /// <summary>
