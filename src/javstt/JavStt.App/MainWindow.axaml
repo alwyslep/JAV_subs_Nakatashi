@@ -1,0 +1,134 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:JavStt.App"
+        x:Class="JavStt.App.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="JAV 전사기" Width="980" Height="760" MinWidth="760" MinHeight="560"
+        DragDrop.AllowDrop="True">
+
+  <!-- ★DockPanel, not a seven-row Grid. The first attempt mixed Auto/*/fixed rows and the queue
+       row swallowed the window, pushing the actions and the log off the bottom edge. Docking says
+       what is actually meant: chrome pins to the edges, the queue takes what is left. -->
+  <DockPanel LastChildFill="True">
+
+    <!-- ── header + status pills ─────────────────────────────────────────────── -->
+    <Border DockPanel.Dock="Top" Classes="header" Padding="16,10">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Text="🎙  JAV 전사기" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Border Classes="pill" Cursor="Hand" PointerPressed="OnKeyPillPressed">
+            <TextBlock Text="{Binding KeyStatus}" FontSize="12" />
+          </Border>
+          <Border Classes="pill" Cursor="Hand" PointerPressed="OnOptionsPillPressed">
+            <TextBlock Text="{Binding Model, StringFormat='모델 {0}'}" FontSize="12" />
+          </Border>
+          <Border Classes="pill">
+            <TextBlock Text="{Binding RunState, StringFormat='● {0}'}" FontSize="12" />
+          </Border>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- ── log pinned to the bottom, above it the actions and options ─────────── -->
+    <Border DockPanel.Dock="Bottom" Classes="card" Margin="16,6,16,16" Padding="12" Height="200">
+      <DockPanel LastChildFill="True">
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,8">
+          <TextBlock Text="로그" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+            <Button Classes="mini" Content="⚠ 문제만" Command="{Binding ToggleProblemsCommand}" />
+            <Button Name="BtnCopyLog" Classes="mini" Content="📋 복사" />
+            <Button Classes="mini" Content="🗑 비움" Command="{Binding ClearLogCommand}" />
+          </StackPanel>
+        </Grid>
+        <ScrollViewer>
+          <ItemsControl ItemsSource="{Binding Log}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding}" FontFamily="Consolas,monospace" FontSize="12"
+                           Foreground="{DynamicResource NkTextSecondaryBrush}" TextWrapping="Wrap" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+
+    <Border DockPanel.Dock="Bottom" Classes="card" Margin="16,0,16,0" Padding="12"
+            IsVisible="{Binding OptionsVisible}">
+      <StackPanel Orientation="Horizontal" Spacing="18">
+        <StackPanel Spacing="4">
+          <TextBlock Text="모델" Classes="dim" FontSize="11" />
+          <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding Model}" MinWidth="220" />
+        </StackPanel>
+        <StackPanel Spacing="4">
+          <TextBlock Text="언어" Classes="dim" FontSize="11" />
+          <TextBox Text="{Binding Language}" Width="80" />
+        </StackPanel>
+        <StackPanel Spacing="4">
+          <TextBlock Text="리전" Classes="dim" FontSize="11" />
+          <ComboBox ItemsSource="{Binding Regions}" SelectedItem="{Binding Region}" MinWidth="160" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="16,12,16,12">
+      <Button Classes="primary" Content="▶ 전사 시작"
+              Command="{Binding StartCommand}" IsEnabled="{Binding CanStart}" />
+      <Button Content="안전 정지" Command="{Binding SafeStopCommand}" IsEnabled="{Binding IsRunning}"
+              ToolTip.Tip="현재 파일을 끝까지 완성한 뒤 정지합니다 — 반쪽 자막을 남기지 않습니다." />
+      <Button Classes="danger" Content="정지" Command="{Binding StopCommand}" IsEnabled="{Binding IsRunning}"
+              ToolTip.Tip="즉시 정지합니다 — 진행 중이던 파일의 자막은 만들어지지 않습니다." />
+      <TextBlock Classes="dim" VerticalAlignment="Center" FontSize="12"
+                 IsVisible="{Binding SafeStopPending}" Text="현재 파일 후 정지 예약됨" />
+    </StackPanel>
+
+    <!-- ── API key, collapsed until the pill is clicked ───────────────────────── -->
+    <Border DockPanel.Dock="Top" Classes="card" Margin="16,12,16,0" Padding="12"
+            IsVisible="{Binding KeyVisible}">
+      <StackPanel Spacing="6">
+        <TextBlock Text="Alibaba Model Studio API 키" Classes="dim" FontSize="12" />
+        <TextBox Text="{Binding ApiKey}" PasswordChar="•" Watermark="sk-ws-…" />
+        <TextBlock Classes="dim" FontSize="11" Text="싱가포르 리전에서 발급 · 콘솔 → 설정 → API Key" />
+      </StackPanel>
+    </Border>
+
+    <!-- ── the queue fills whatever is left ───────────────────────────────────── -->
+    <Border Classes="card" Margin="16,12,16,0" Padding="12">
+      <DockPanel LastChildFill="True">
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,Auto,Auto,*,Auto" Margin="0,0,0,10">
+          <Button Name="BtnFiles" Content="📄 파일 추가" />
+          <Button Name="BtnFolder" Grid.Column="1" Content="📁 폴더 추가" Margin="8,0,0,0" />
+          <Button Grid.Column="2" Content="비우기" Classes="mini" Margin="8,0,0,0"
+                  Command="{Binding ClearJobsCommand}" />
+          <CheckBox Grid.Column="4" Content="이미 있으면 건너뛰기" IsChecked="{Binding SkipExisting}"
+                    VerticalAlignment="Center" />
+        </Grid>
+
+        <Border Background="{DynamicResource NkBaseBrush}" CornerRadius="6" Padding="4">
+          <Panel>
+            <TextBlock Classes="dim" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"
+                       IsVisible="{Binding !HasJobs}"
+                       Text="여기로 비디오 파일이나 폴더를 끌어다 놓으세요" />
+            <ListBox ItemsSource="{Binding Jobs}" IsVisible="{Binding HasJobs}">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:JobRow">
+                  <Grid ColumnDefinitions="*,Auto,170" Margin="8,6" ColumnSpacing="12">
+                    <StackPanel Spacing="3">
+                      <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                      <ProgressBar Value="{Binding Fraction}" Maximum="1" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Classes="num" Text="{Binding Duration}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Text="{Binding Status}" VerticalAlignment="Center"
+                               FontSize="12" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource NkTextSecondaryBrush}" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Panel>
+        </Border>
+      </DockPanel>
+    </Border>
+
+  </DockPanel>
+</Window>

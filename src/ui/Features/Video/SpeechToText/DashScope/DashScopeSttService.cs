@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 using Nikse.SubtitleEdit.Core.Common;
 using Nikse.SubtitleEdit.Features.Video.SpeechToText.Engines;
 using Nikse.SubtitleEdit.Features.Video.SpeechToText.OpenAiCompatible;
-using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.UiLogic.Http;
 
 namespace Nikse.SubtitleEdit.Features.Video.SpeechToText.DashScope;
 
@@ -34,11 +34,47 @@ public class DashScopeSttService : ISttTranscriber
     private const string TranscriptionPath = "/api/v1/services/audio/asr/transcription";
     private const string TasksPath = "/api/v1/tasks/";
 
+    private static HttpClient? _sharedHttpClient;
+    private static readonly Lock SharedHttpClientLock = new();
+
+    /// <summary>
+    /// Shared HttpClient for this service - created once, reused, infinite timeout so per-call
+    /// deadlines come from a linked CancellationTokenSource; callers must NOT mutate Timeout on it.
+    /// A fresh client per request leaks sockets into TIME_WAIT and skips DNS caching.
+    ///
+    /// ★Its own instead of borrowing the OpenAI one, so this file depends on nothing above it.
+    ///   That is what lets the transcription engine be compiled into a standalone tool by linking
+    ///   the source rather than copying it - and a copy would fork the OSS upload rules in
+    ///   <see cref="BuildOssUploadForm"/>, which are the part that is expensive to rediscover.
+    /// </summary>
+    public static HttpClient SharedHttpClient
+    {
+        get
+        {
+            if (_sharedHttpClient != null)
+            {
+                return _sharedHttpClient;
+            }
+
+            lock (SharedHttpClientLock)
+            {
+                if (_sharedHttpClient == null)
+                {
+                    var client = HttpClientFactoryWithProxy.CreateHttpClientWithProxy();
+                    client.Timeout = Timeout.InfiniteTimeSpan;
+                    _sharedHttpClient = client;
+                }
+            }
+
+            return _sharedHttpClient;
+        }
+    }
+
     private readonly HttpClient _httpClient;
     private readonly DashScopeSttSettings _settings;
 
     public DashScopeSttService(DashScopeSttSettings settings)
-        : this(OpenAiSttService.SharedHttpClient, settings)
+        : this(SharedHttpClient, settings)
     {
     }
 
@@ -431,22 +467,6 @@ public class DashScopeSttService : ISttTranscriber
         };
     }
 
-    public static DashScopeSttSettings GetSettingsFromConfiguration()
-    {
-        var tools = Se.Settings.Tools;
-        return new DashScopeSttSettings
-        {
-            ApiKey = tools.DashScopeSttApiKey,
-            Model = tools.DashScopeSttModel,
-            Language = tools.DashScopeSttLanguage,
-            Region = tools.DashScopeSttRegion,
-            EnableWords = tools.DashScopeSttEnableWords,
-            TimeoutSeconds = tools.DashScopeSttTimeoutSeconds,
-            VocabularyId = tools.DashScopeSttVocabularyId,
-            SpeakerCount = tools.DashScopeSttSpeakerCount,
-            Logger = Se.WriteToolsLog,
-        };
-    }
 }
 
 public class DashScopeSttSettings

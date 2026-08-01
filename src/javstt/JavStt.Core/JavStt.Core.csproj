@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>JavStt.Core</RootNamespace>
+    <AssemblyName>JavStt.Core</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>JavStt.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Subtitle model and SubRip writing. LibSE is already a standalone library
+         (netstandard2.1;net10.0) - seconv is the precedent for building a CLI on it. -->
+    <ProjectReference Include="..\..\libse\LibSE.csproj" />
+    <!-- Avalonia-free by construction: WhisperLanguage/WhisperModel for the engine interfaces,
+         and HttpClientFactoryWithProxy for the shared client. -->
+    <ProjectReference Include="..\..\libuilogic\LibUiLogic.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      ★LINKED, not copied. These four files are the transcription engine, and the OSS PostObject
+        rules inside DashScopeSttService.BuildOssUploadForm took a live four-way probe against the
+        bucket to establish (quoted part names, unquoted boundary, no Content-Type on the file
+        part). A copy would fork silently the first time either side is touched; a link means a fix
+        in Subtitle Edit is a fix here and vice versa.
+
+      ★They compile outside the app because DashScopeSttService depends on no app configuration -
+        GetSettingsFromConfiguration lives on DashScopeQwen3SttEngine, and the shared HttpClient is
+        the service's own.
+    -->
+    <Compile Include="..\..\ui\Features\Video\SpeechToText\DashScope\DashScopeSttService.cs"
+             Link="Linked\DashScopeSttService.cs" />
+    <Compile Include="..\..\ui\Features\Video\SpeechToText\OpenAiCompatible\OpenAiCompatibleModels.cs"
+             Link="Linked\OpenAiCompatibleModels.cs" />
+    <Compile Include="..\..\ui\Features\Video\SpeechToText\Engines\IOnlineSttEngine.cs"
+             Link="Linked\IOnlineSttEngine.cs" />
+    <Compile Include="..\..\ui\Features\Video\SpeechToText\Engines\ISpeechToTextEngine.cs"
+             Link="Linked\ISpeechToTextEngine.cs" />
+  </ItemGroup>
+
+</Project>

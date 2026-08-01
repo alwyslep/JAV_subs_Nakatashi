@@ -1,0 +1,153 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    The Deep Gray look, re-expressed for this tool's controls only.
+
+    ★Not NakatashiTheme.cs. That file is 550 lines and most of it is Subtitle Edit's DataGrid,
+      subtitle grid, ComboBox guards and menu chrome - surfaces this tool does not have. What is
+      shared is the thing that must not drift: the colour table, linked as NakatashiPalette.cs and
+      pushed into the Nk* resource keys below by App.ApplyPalette.
+
+    ★Font chain is the fork's, in the fork's order: Inter (Latin, from the package) → Pretendard
+      (Korean UI) → Pretendard JP → $Default. The JP sibling is not optional - base Pretendard has
+      kana but no CJK ideographs, so without it every Japanese cue mixes Pretendard kana with an
+      OS-fallback kanji.
+  -->
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource NkBaseBrush}" />
+    <Setter Property="FontFamily"
+            Value="avares://javstt/Assets/Fonts#Inter, avares://javstt/Assets/Fonts#Pretendard, avares://javstt/Assets/Fonts#Pretendard JP, $Default" />
+  </Style>
+
+  <Style Selector="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource NkTextPrimaryBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.dim">
+    <Setter Property="Foreground" Value="{DynamicResource NkTextSecondaryBrush}" />
+  </Style>
+
+  <!-- Tabular figures: durations and counts sit in columns, so the digits must not shimmy as they
+       change. Same reason the fork put tnum on its subtitle grid's time columns. -->
+  <Style Selector="TextBlock.num">
+    <Setter Property="FontFeatures" Value="tnum" />
+    <Setter Property="Foreground" Value="{DynamicResource NkTextSecondaryBrush}" />
+  </Style>
+
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{DynamicResource NkSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource NkBorderSubtleBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+  </Style>
+
+  <Style Selector="Border.header">
+    <Setter Property="Background" Value="{DynamicResource NkHeaderBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource NkBorderSubtleBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+  </Style>
+
+  <!-- Status pill, as in the sibling translator's header. -->
+  <Style Selector="Border.pill">
+    <Setter Property="Background" Value="{DynamicResource NkElevatedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource NkBorderStrongBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="Padding" Value="10,4" />
+  </Style>
+
+  <Style Selector="Button">
+    <Setter Property="Background" Value="{DynamicResource NkSurfaceBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource NkTextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource NkBorderStrongBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="12,7" />
+  </Style>
+
+  <Style Selector="Button:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource NkSurfaceHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource NkBorderStrongBrush}" />
+  </Style>
+
+  <Style Selector="Button:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource NkSurfacePressedBrush}" />
+  </Style>
+
+  <Style Selector="Button:disabled /template/ ContentPresenter">
+    <Setter Property="Opacity" Value="0.4" />
+  </Style>
+
+  <!-- The one gradient surface: the action that starts work. -->
+  <Style Selector="Button.primary /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource NkAccentGradient}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+
+  <Style Selector="Button.primary">
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="Button.danger">
+    <Setter Property="Foreground" Value="{DynamicResource NkAccentEndBrush}" />
+  </Style>
+
+  <Style Selector="Button.mini">
+    <Setter Property="Padding" Value="8,3" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="TextBox">
+    <Setter Property="Background" Value="{DynamicResource NkSurfaceBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource NkTextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource NkBorderStrongBrush}" />
+    <Setter Property="CornerRadius" Value="8" />
+  </Style>
+
+  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+    <Setter Property="BorderBrush" Value="{DynamicResource NkAccentGradient}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <Style Selector="ComboBox">
+    <Setter Property="Background" Value="{DynamicResource NkSurfaceBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource NkTextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource NkBorderStrongBrush}" />
+    <Setter Property="CornerRadius" Value="8" />
+  </Style>
+
+  <Style Selector="CheckBox">
+    <Setter Property="Foreground" Value="{DynamicResource NkTextPrimaryBrush}" />
+  </Style>
+
+  <Style Selector="ProgressBar">
+    <Setter Property="Background" Value="{DynamicResource NkSurfacePressedBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource NkAccentGradient}" />
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="MinHeight" Value="4" />
+    <Setter Property="Height" Value="4" />
+  </Style>
+
+  <Style Selector="ListBox">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <Style Selector="ListBoxItem">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="CornerRadius" Value="6" />
+  </Style>
+
+  <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource NkSurfaceHoverBrush}" />
+  </Style>
+
+  <Style Selector="GridSplitter">
+    <Setter Property="Background" Value="{DynamicResource NkBorderSubtleBrush}" />
+    <Setter Property="Height" Value="4" />
+  </Style>
+
+</Styles>

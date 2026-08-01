@@ -34,9 +34,33 @@ public class DashScopeQwen3SttEngine : IOnlineSttEngine
     public bool IsEngineInstalled() => true;
     public bool CanBeDownloaded() => false;
 
+    /// <summary>
+    /// Reads the app's settings into the service's own settings object.
+    /// ★Lives here rather than on <see cref="DashScopeSttService"/> so that service depends on no
+    ///   app configuration at all - which is what lets it be compiled into a standalone
+    ///   transcription tool by linking the source instead of copying it. A copy would fork the OSS
+    ///   upload rules, and those took a live four-way probe to establish.
+    /// </summary>
+    public static DashScopeSttSettings GetSettingsFromConfiguration()
+    {
+        var tools = Se.Settings.Tools;
+        return new DashScopeSttSettings
+        {
+            ApiKey = tools.DashScopeSttApiKey,
+            Model = tools.DashScopeSttModel,
+            Language = tools.DashScopeSttLanguage,
+            Region = tools.DashScopeSttRegion,
+            EnableWords = tools.DashScopeSttEnableWords,
+            TimeoutSeconds = tools.DashScopeSttTimeoutSeconds,
+            VocabularyId = tools.DashScopeSttVocabularyId,
+            SpeakerCount = tools.DashScopeSttSpeakerCount,
+            Logger = Se.WriteToolsLog,
+        };
+    }
+
     public ISttTranscriber? CreateTranscriber(out string? configErrorMessage)
     {
-        var settings = DashScopeSttService.GetSettingsFromConfiguration();
+        var settings = GetSettingsFromConfiguration();
         if (string.IsNullOrWhiteSpace(settings.ApiKey))
         {
             configErrorMessage = Se.Language.General.OnlineSttApiKeyMissing;

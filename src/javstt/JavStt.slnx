@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="../libse/LibSE.csproj" />
+  <Project Path="../libuilogic/LibUiLogic.csproj" />
+  <Project Path="JavStt.App/JavStt.App.csproj" />
+  <Project Path="JavStt.Core/JavStt.Core.csproj" />
+  <Project Path="JavStt.Tests/JavStt.Tests.csproj" />
+</Solution>

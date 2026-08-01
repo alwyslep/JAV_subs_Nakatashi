@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>JavStt.App</RootNamespace>
+    <AssemblyName>javstt</AssemblyName>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- The Skia and HarfBuzz symbol files are 100 MB of the 160 MB payload and mean nothing to a
+         user running a released build. DebugType alone only drops this project's own pdb - the
+         referenced ones ride along on AllowedReferenceRelatedFileExtensions unless told otherwise.
+         Debug builds are unaffected. -->
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <AllowedReferenceRelatedFileExtensions Condition="'$(Configuration)' == 'Release'">none</AllowedReferenceRelatedFileExtensions>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Same versions as the fork's UI project, so the linked palette and the Fluent resource keys
+         it overrides mean the same thing here. -->
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.1" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\JavStt.Core\JavStt.Core.csproj" />
+  </ItemGroup>
+
+  <!-- SkiaSharp and HarfBuzz ship their native symbol files as content, so they survive both
+       DebugType and AllowedReferenceRelatedFileExtensions - 100 MB of the payload for symbols
+       nobody reading a crash from a released build can use. Drop them at publish time. -->
+  <Target Name="DropNativeSymbols" AfterTargets="ComputeResolvedFilesToPublishList"
+          Condition="'$(Configuration)' == 'Release'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <!--
+      ★LINKED colour table, so this tool and Subtitle Edit are the same grey. NakatashiPalette has
+        no app coupling at all (verified: zero references to Se / Logic.Config / UiUtil), unlike
+        NakatashiTheme.cs whose 550 lines are mostly DataGrid and subtitle-grid specifics this tool
+        has no use for - those are re-expressed in Theme.axaml against the same palette.
+    -->
+    <Compile Include="..\..\ui\Logic\Theming\Nakatashi\NakatashiPalette.cs"
+             Link="Linked\NakatashiPalette.cs" />
+    <!-- The fork's embedded Korean/Japanese faces. Inter (Latin) arrives via the package above;
+         Pretendard JP is what stops kanji falling back to the OS face mid-line. -->
+    <AvaloniaResource Include="..\..\ui\Assets\Fonts\*.otf" Link="Assets\Fonts\%(Filename)%(Extension)" />
+    <AvaloniaResource Include="..\..\ui\Assets\Fonts\*.txt" Link="Assets\Fonts\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>
