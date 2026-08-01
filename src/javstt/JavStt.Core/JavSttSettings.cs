@@ -47,6 +47,44 @@ public class JavSttSettings
     /// <summary>Folder the file picker opens in.</summary>
     public string LastFolder { get; set; } = string.Empty;
 
+    // ── window state ────────────────────────────────────────────────────────────────────────
+    // ★Restored on the next start, because a tool run against a library on an external drive gets
+    //   opened hundreds of times and re-dragging it every time is the kind of friction that makes
+    //   people stop using something.
+
+    public double WindowWidth { get; set; } = 980;
+    public double WindowHeight { get; set; } = 760;
+
+    /// <summary>
+    /// Null means "never positioned" - the window centres itself instead.
+    /// ★Nullable rather than NaN. NaN is not representable in JSON and System.Text.Json throws on
+    ///   it, which Save's catch then swallowed - so the entire settings file silently stopped being
+    ///   written, taking the API key with it. Caught by the round-trip test, not by running the app.
+    /// </summary>
+    public double? WindowX { get; set; }
+
+    public double? WindowY { get; set; }
+
+    public bool WindowMaximized { get; set; }
+
+    /// <summary>Height of the log pane; the queue takes the rest.</summary>
+    public double LogHeight { get; set; } = 200;
+
+    // ── usage ───────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Audio seconds the provider has billed, accumulated across every run.
+    ///
+    /// ★The provider's own figure, not the files' lengths - it counts detected speech, so a
+    ///   600-second clip billed 333. Both families report it, under different keys
+    ///   (fun-asr <c>usage.duration</c>, qwen3 <c>usage.seconds</c>); reading only one of them is
+    ///   what made fun-asr look like it reported nothing.
+    /// </summary>
+    public double BilledSecondsTotal { get; set; }
+
+    /// <summary>Films transcribed, ever. Paired with the seconds so the average is visible.</summary>
+    public int FilmsTranscribedTotal { get; set; }
+
     [JsonIgnore]
     public static string DefaultPath =>
         Path.Combine(AppContext.BaseDirectory, "javstt.settings.json");

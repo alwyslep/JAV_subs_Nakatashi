@@ -80,18 +80,54 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _runState = "대기";
     [ObservableProperty] private bool _isRunning;
     [ObservableProperty] private bool _safeStopPending;
+    [ObservableProperty] private bool _isPaused;
 
     public string KeyStatus => string.IsNullOrWhiteSpace(ApiKey) ? "키 없음" : "키 있음";
     public bool HasJobs => Jobs.Count > 0;
     public bool CanStart => !IsRunning && HasJobs && !string.IsNullOrWhiteSpace(ApiKey);
+    public string PauseLabel => IsPaused ? "▶ 재개" : "⏸ 일시정지";
+
+    /// <summary>
+    /// What the provider has billed, this run and ever.
+    /// ★Billed seconds, not film length - the provider counts detected speech, so a 600-second clip
+    ///   came back as 333. Showing the file's duration instead would overstate it by 2-3x on this
+    ///   material, which is exactly the kind of number nobody checks until the invoice arrives.
+    /// </summary>
+    public string UsageText
+    {
+        get
+        {
+            var session = TimeSpan.FromSeconds(_sessionBilledSeconds);
+            var total = TimeSpan.FromSeconds(_settings.BilledSecondsTotal + _sessionBilledSeconds);
+            return _sessionBilledSeconds > 0
+                ? $"청구 {session.TotalHours:0.0}h · 누적 {total.TotalHours:0.0}h"
+                : $"누적 {total.TotalHours:0.0}h";
+        }
+    }
+
+    private double _sessionBilledSeconds;
 
     partial void OnApiKeyChanged(string value)
     {
         OnPropertyChanged(nameof(KeyStatus));
         OnPropertyChanged(nameof(CanStart));
+        // ★Written through immediately, not only when a run starts. The first build saved the key
+        //   solely inside PersistSettings, so typing it and closing the window lost it - the
+        //   shutdown handler dutifully saved the settings object the key had never reached.
+        _settings.ApiKey = value;
     }
 
+    partial void OnModelChanged(string value) => _settings.Model = value;
+
+    partial void OnLanguageChanged(string value) => _settings.Language = value;
+
+    partial void OnRegionChanged(string value) => _settings.Region = value;
+
+    partial void OnSkipExistingChanged(bool value) => _settings.SkipExisting = value;
+
     partial void OnIsRunningChanged(bool value) => OnPropertyChanged(nameof(CanStart));
+
+    partial void OnIsPausedChanged(bool value) => OnPropertyChanged(nameof(PauseLabel));
 
     private void OnJobsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
@@ -159,10 +195,15 @@ public partial class MainViewModel : ObservableObject
         _runner.JobChanged += job =>
         {
             var row = Jobs.FirstOrDefault(r => ReferenceEquals(r.Job, job));
-            if (row != null)
+            Dispatcher.UIThread.Post(() =>
             {
-                Dispatcher.UIThread.Post(row.Refresh);
-            }
+                row?.Refresh();
+                if (_runner != null)
+                {
+                    _sessionBilledSeconds = _runner.BilledSeconds;
+                    OnPropertyChanged(nameof(UsageText));
+                }
+            });
         };
 
         try
@@ -171,12 +212,48 @@ public partial class MainViewModel : ObservableObject
         }
         finally
         {
+            _sessionBilledSeconds = _runner?.BilledSeconds ?? _sessionBilledSeconds;
             IsRunning = false;
+            IsPaused = false;
             SafeStopPending = false;
             RunState = "대기";
+
             var done = Jobs.Count(r => r.Job.State == JobState.Done);
             var failed = Jobs.Count(r => r.Job.State == JobState.Failed);
-            WriteLog($"완료 {done}개, 실패 {failed}개");
+
+            // ★Banked into the settings file, not just held in memory. The whole point of a running
+            //   total is that it survives the restart it is meant to inform.
+            _settings.BilledSecondsTotal += _sessionBilledSeconds;
+            _settings.FilmsTranscribedTotal += done;
+            _sessionBilledSeconds = 0;
+            _settings.Save();
+
+            OnPropertyChanged(nameof(UsageText));
+            WriteLog($"완료 {done}개, 실패 {failed}개 · 누적 청구 {TimeSpan.FromSeconds(_settings.BilledSecondsTotal).TotalHours:0.0}시간");
+        }
+    }
+
+    [RelayCommand]
+    private void TogglePause()
+    {
+        if (_runner == null || !IsRunning)
+        {
+            return;
+        }
+
+        if (IsPaused)
+        {
+            _runner.Resume();
+            IsPaused = false;
+            RunState = "실행 중";
+            WriteLog("재개");
+        }
+        else
+        {
+            _runner.Pause();
+            IsPaused = true;
+            RunState = "일시정지 (현재 파일 후)";
+            WriteLog("일시정지 예약 — 현재 파일을 끝내고 멈춥니다");
         }
     }
 
@@ -220,7 +297,10 @@ public partial class MainViewModel : ObservableObject
 
     public string LogText => string.Join(Environment.NewLine, Log);
 
-    private void PersistSettings()
+    /// <summary>The window writes its own geometry here before asking for a save.</summary>
+    public JavSttSettings Settings => _settings;
+
+    public void PersistSettings()
     {
         _settings.ApiKey = ApiKey;
         _settings.Model = Model;

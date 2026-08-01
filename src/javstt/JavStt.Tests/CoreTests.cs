@@ -171,6 +171,64 @@ public class SettingsTests
             File.Delete(path);
         }
     }
+
+    /// <summary>
+    /// ★Save swallows exceptions on purpose (a read-only install folder is a real deployment), so
+    ///   anything unserialisable turns the whole file into a silent no-op - the API key included.
+    ///   That is exactly what a NaN window position did. This asserts the file actually appears.
+    /// </summary>
+    [Fact]
+    public void Save_ActuallyWritesAFileWithEveryFieldSetToSomethingAwkward()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"javstt-test-{Guid.NewGuid():N}.json");
+        try
+        {
+            new JavSttSettings
+            {
+                ApiKey = "sk-ws-x",
+                WindowX = null,
+                WindowY = null,
+                WindowWidth = 1234.5,
+                LogHeight = 321.25,
+                BilledSecondsTotal = 98765.4,
+                FilmsTranscribedTotal = 42,
+            }.Save(path);
+
+            Assert.True(File.Exists(path), "Save produced no file - something in the object is not serialisable");
+
+            var loaded = JavSttSettings.Load(path);
+            Assert.Equal("sk-ws-x", loaded.ApiKey);
+            Assert.Null(loaded.WindowX);
+            Assert.Equal(1234.5, loaded.WindowWidth);
+            Assert.Equal(321.25, loaded.LogHeight);
+            Assert.Equal(98765.4, loaded.BilledSecondsTotal);
+            Assert.Equal(42, loaded.FilmsTranscribedTotal);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void WindowGeometry_RoundTripsWhenPositioned()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"javstt-test-{Guid.NewGuid():N}.json");
+        try
+        {
+            new JavSttSettings { WindowX = -1920, WindowY = 100, WindowMaximized = true }.Save(path);
+            var loaded = JavSttSettings.Load(path);
+
+            // Negative X is a real value - a monitor to the left of the primary one.
+            Assert.Equal(-1920, loaded.WindowX);
+            Assert.Equal(100, loaded.WindowY);
+            Assert.True(loaded.WindowMaximized);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }
 
 public class BatchRunnerTests
@@ -230,6 +288,93 @@ public class BatchRunnerTests
 
             Assert.Equal(JobState.Failed, jobs[0].State);
             Assert.Equal(JobState.Skipped, jobs[1].State);
+        }
+        finally
+        {
+            dir.Delete(true);
+        }
+    }
+
+    // Pause holds between films and resumes where it left off - the difference from a safe stop is
+    // only that the queue survives.
+    [Fact]
+    public async Task Pause_HoldsTheQueueUntilResumed()
+    {
+        var dir = Directory.CreateTempSubdirectory("javstt");
+        try
+        {
+            var jobs = new List<TranscriptionJob>();
+            for (var i = 0; i < 3; i++)
+            {
+                var path = Path.Combine(dir.FullName, $"{i}.mp4");
+                File.WriteAllText(path, "x");
+                jobs.Add(new TranscriptionJob { VideoPath = path });
+            }
+
+            var runner = new BatchRunner(new JavSttSettings());
+            var paused = false;
+            runner.JobChanged += _ =>
+            {
+                if (!paused)
+                {
+                    paused = true;
+                    runner.Pause();
+                }
+            };
+
+            var run = runner.RunAsync(jobs, TestContext.Current.CancellationToken);
+
+            // Give it a moment to reach the hold, then confirm it really is holding.
+            await Task.Delay(300, TestContext.Current.CancellationToken);
+            Assert.True(runner.IsPaused);
+            Assert.False(run.IsCompleted);
+
+            runner.Resume();
+            await run;
+
+            Assert.False(runner.IsPaused);
+            Assert.All(jobs, j => Assert.NotEqual(JobState.Queued, j.State));
+        }
+        finally
+        {
+            dir.Delete(true);
+        }
+    }
+
+    // ★A paused batch must still be stoppable, or the only way out is killing the process.
+    [Fact]
+    public async Task Stop_BreaksOutOfAPause()
+    {
+        var dir = Directory.CreateTempSubdirectory("javstt");
+        try
+        {
+            var jobs = new List<TranscriptionJob>();
+            for (var i = 0; i < 3; i++)
+            {
+                var path = Path.Combine(dir.FullName, $"{i}.mp4");
+                File.WriteAllText(path, "x");
+                jobs.Add(new TranscriptionJob { VideoPath = path });
+            }
+
+            var runner = new BatchRunner(new JavSttSettings());
+            var paused = false;
+            runner.JobChanged += _ =>
+            {
+                if (!paused)
+                {
+                    paused = true;
+                    runner.Pause();
+                }
+            };
+
+            var run = runner.RunAsync(jobs, TestContext.Current.CancellationToken);
+            await Task.Delay(300, TestContext.Current.CancellationToken);
+            Assert.True(runner.IsPaused);
+
+            runner.RequestStop();
+            await run;
+
+            Assert.False(runner.IsRunning);
         }
         finally
         {

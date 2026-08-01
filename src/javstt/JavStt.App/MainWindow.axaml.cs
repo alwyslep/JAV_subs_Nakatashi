@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
@@ -28,6 +29,88 @@ public partial class MainWindow : Window
             grid.RowDefinitions[0].MinHeight = 140;
             grid.RowDefinitions[2].MinHeight = 90;
         }
+
+        Opened += (_, _) => RestoreWindowState();
+        Closing += (_, _) => SaveWindowState();
+    }
+
+    private JavStt.Core.JavSttSettings? Settings => Vm?.Settings;
+
+    /// <summary>
+    /// Puts the window back where it was.
+    ///
+    /// ★Applied in Opened rather than the constructor: Position is meaningless before the window
+    ///   has a platform handle, and setting it early is silently dropped.
+    ///
+    /// ★An off-screen restore is refused. A monitor that is no longer attached would otherwise put
+    ///   the window somewhere unreachable, and the only fix a user has for that is deleting the
+    ///   settings file - which they have no reason to guess at.
+    /// </summary>
+    private void RestoreWindowState()
+    {
+        var s = Settings;
+        if (s == null)
+        {
+            return;
+        }
+
+        if (s.WindowWidth > 200 && s.WindowHeight > 200)
+        {
+            Width = s.WindowWidth;
+            Height = s.WindowHeight;
+        }
+
+        if (s.WindowX is { } x && s.WindowY is { } y && IsOnAScreen(x, y))
+        {
+            Position = new PixelPoint((int)x, (int)y);
+        }
+        else
+        {
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        }
+
+        if (s.WindowMaximized)
+        {
+            WindowState = WindowState.Maximized;
+        }
+
+        if (s.LogHeight > 60 &&
+            this.FindControl<GridSplitter>("QueueLogSplit")?.Parent is Grid grid &&
+            grid.RowDefinitions.Count == 3)
+        {
+            grid.RowDefinitions[2].Height = new GridLength(s.LogHeight, GridUnitType.Pixel);
+        }
+    }
+
+    private bool IsOnAScreen(double x, double y)
+        => Screens.All.Any(screen => screen.Bounds.Contains(new PixelPoint((int)x + 40, (int)y + 20)));
+
+    private void SaveWindowState()
+    {
+        var s = Settings;
+        if (s == null)
+        {
+            return;
+        }
+
+        s.WindowMaximized = WindowState == WindowState.Maximized;
+
+        // ★Only record geometry from a normal window. Reading Width/Height while maximized stores
+        //   the screen size, so restoring un-maximized would fill the display and look broken.
+        if (WindowState == WindowState.Normal)
+        {
+            s.WindowWidth = Width;
+            s.WindowHeight = Height;
+            s.WindowX = Position.X;
+            s.WindowY = Position.Y;
+        }
+
+        if (this.FindControl<GridSplitter>("QueueLogSplit")?.Parent is Grid grid && grid.RowDefinitions.Count == 3)
+        {
+            s.LogHeight = grid.RowDefinitions[2].ActualHeight;
+        }
+
+        Vm?.PersistSettings();
     }
 
     /// <summary>Log height the double-click restores - the same 200 the window opens with.</summary>

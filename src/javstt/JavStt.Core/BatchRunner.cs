@@ -20,6 +20,9 @@ public class TranscriptionJob
     public string Status { get; set; } = string.Empty;
     public double DurationSeconds { get; set; }
     public int CueCount { get; set; }
+
+    /// <summary>Audio seconds the provider billed for this film.</summary>
+    public double BilledSeconds { get; set; }
     public string? SubtitlePath { get; set; }
     public string? Error { get; set; }
 }
@@ -44,6 +47,17 @@ public class BatchRunner
     private CancellationTokenSource? _hardStop;
     private volatile bool _safeStopRequested;
 
+    /// <summary>
+    /// Non-null while paused; completing it resumes.
+    ///
+    /// ★An awaitable gate, not a ManualResetEventSlim. A blocking wait looked equivalent and was
+    ///   not: RunAsync runs synchronously on the caller's thread until its first real await, and
+    ///   with a job that fails fast - no API key, a missing file - there is no such await, so the
+    ///   block landed on the caller. In a test that deadlocked before RunAsync even returned a
+    ///   Task; from the GUI it would have frozen the UI thread. Found by the pause test hanging.
+    /// </summary>
+    private volatile TaskCompletionSource? _pauseGate;
+
     public BatchRunner(JavSttSettings settings, Action<string>? log = null)
     {
         _settings = settings;
@@ -52,6 +66,10 @@ public class BatchRunner
 
     public bool IsRunning { get; private set; }
     public bool SafeStopRequested => _safeStopRequested;
+    public bool IsPaused => _pauseGate != null;
+
+    /// <summary>Audio seconds the provider billed for this batch so far.</summary>
+    public double BilledSeconds { get; private set; }
 
     public event Action<TranscriptionJob>? JobChanged;
     public event Action? Finished;
@@ -61,8 +79,20 @@ public class BatchRunner
     public void RequestStop()
     {
         _safeStopRequested = true;
+        Resume();           // a paused batch must still be stoppable
         _hardStop?.Cancel();
     }
+
+    /// <summary>
+    /// Hold after the current film. ★Between films, like a safe stop - the difference is only that
+    /// this one is resumable. Pausing mid-upload would either abandon work already paid for or hold
+    /// a provider connection open for as long as the user felt like it.
+    /// </summary>
+    public void Pause()
+        => Interlocked.CompareExchange(
+            ref _pauseGate, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously), null);
+
+    public void Resume() => Interlocked.Exchange(ref _pauseGate, null)?.TrySetResult();
 
     /// <summary>
     /// Video extensions worth offering. ★mkv is in the list even though the library measured
@@ -98,6 +128,25 @@ public class BatchRunner
                     break;
                 }
 
+                // Pause waits here, for the same reason and at the same point.
+                if (_pauseGate is { } gate)
+                {
+                    JobChanged?.Invoke(job);
+                    try
+                    {
+                        await gate.Task.WaitAsync(_hardStop.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+
+                    if (_safeStopRequested)
+                    {
+                        break;
+                    }
+                }
+
                 if (_settings.SkipExisting &&
                     File.Exists(SubtitleBuilder.OutputPathFor(job.VideoPath, _settings.OutputSuffix)))
                 {
@@ -131,7 +180,9 @@ public class BatchRunner
                     job.CueCount = result.CueCount;
                     job.DurationSeconds = result.DurationSeconds;
                     job.SubtitlePath = result.SubtitlePath;
+                    job.BilledSeconds = result.BilledSeconds;
                     job.Status = $"{result.CueCount} 큐";
+                    BilledSeconds += result.BilledSeconds;
                 }
                 catch (OperationCanceledException)
                 {
@@ -158,6 +209,9 @@ public class BatchRunner
         {
             IsRunning = false;
             _safeStopRequested = false;
+            // ★Clear the gate too, or a runner stopped while paused stays IsPaused forever and the
+            //   next batch holds on its first film with nothing to resume it.
+            Resume();
             _hardStop?.Dispose();
             _hardStop = null;
             Finished?.Invoke();

@@ -84,6 +84,13 @@ public class DashScopeSttService : ISttTranscriber
         _settings = settings;
     }
 
+    /// <summary>
+    /// Audio seconds the provider billed for the most recent transcription, or 0 when it reported
+    /// none. ★Not the file's length - the provider counts detected speech, and a 600-second clip
+    /// came back as 333, so only the reported figure says what was actually charged.
+    /// </summary>
+    public double LastBilledSeconds { get; private set; }
+
     /// <summary>Region base URL for the given region setting ("china" → Beijing, else international).</summary>
     public static string GetBaseUrl(string? region)
     {
@@ -231,7 +238,20 @@ public class DashScopeSttService : ISttTranscriber
                 throw new HttpRequestException($"DashScope task poll failed ({(int)response.StatusCode}). Response: {json}");
             }
 
-            var output = JsonSerializer.Deserialize<DashScopeTaskResponse>(json, options)?.Output;
+            var task = JsonSerializer.Deserialize<DashScopeTaskResponse>(json, options);
+            var output = task?.Output;
+
+            // ★Fork addition. The two families report the billed amount under DIFFERENT keys -
+            //   fun-asr as usage.duration, qwen3-asr-flash as usage.seconds - and a probe that
+            //   looked only for "seconds" concluded fun-asr reported nothing at all. It does.
+            //   Worth carrying because the figure is not the file's length: a 600 s clip billed
+            //   333 s, so it counts detected speech and only a real reading tells you the cost.
+            var billed = task?.Usage?.Duration ?? task?.Usage?.Seconds;
+            if (billed is > 0)
+            {
+                LastBilledSeconds = billed.Value;
+            }
+
             var status = output?.TaskStatus ?? "UNKNOWN";
             switch (status.ToUpperInvariant())
             {
@@ -523,6 +543,23 @@ internal class DashScopeTaskResponse
 {
     [JsonPropertyName("output")]
     public DashScopeTaskOutput? Output { get; set; }
+
+    [JsonPropertyName("usage")]
+    public DashScopeUsage? Usage { get; set; }
+}
+
+/// <summary>
+/// What the provider says it billed. ★Two keys for one thing: fun-asr answers with
+/// <c>duration</c>, qwen3-asr-flash with <c>seconds</c>. Reading only one of them makes the other
+/// family look like it reports nothing.
+/// </summary>
+internal class DashScopeUsage
+{
+    [JsonPropertyName("duration")]
+    public double? Duration { get; set; }
+
+    [JsonPropertyName("seconds")]
+    public double? Seconds { get; set; }
 }
 
 internal class DashScopeTaskOutput

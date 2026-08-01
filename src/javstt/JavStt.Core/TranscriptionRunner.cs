@@ -20,7 +20,9 @@ public sealed record TranscriptionResult(
     int CueCount,
     int CharacterCount,
     double DurationSeconds,
-    TimeSpan Elapsed);
+    TimeSpan Elapsed,
+    /// <summary>What the provider says it billed - detected speech, not the film's length.</summary>
+    double BilledSeconds);
 
 /// <summary>
 /// One film in, one subtitle file out.
@@ -95,11 +97,13 @@ public class TranscriptionRunner
             var outputPath = SubtitleBuilder.Save(subtitle, videoPath, _settings.OutputSuffix);
             stopwatch.Stop();
 
-            _log?.Invoke($"{name}: {subtitle.Paragraphs.Count} 큐, {response.Text.Length}자, {stopwatch.Elapsed.TotalSeconds:N0}초");
+            var billed = service.LastBilledSeconds;
+            _log?.Invoke($"{name}: {subtitle.Paragraphs.Count} 큐, {response.Text.Length}자, " +
+                         $"{stopwatch.Elapsed.TotalSeconds:N0}초, 청구 {TimeSpan.FromSeconds(billed):h\\:mm\\:ss}");
             progress?.Report(new TranscriptionProgress(TranscriptionStage.Done, 1, "완료"));
 
             return new TranscriptionResult(
-                videoPath, outputPath, subtitle.Paragraphs.Count, response.Text.Length, duration, stopwatch.Elapsed);
+                videoPath, outputPath, subtitle.Paragraphs.Count, response.Text.Length, duration, stopwatch.Elapsed, billed);
         }
         finally
         {

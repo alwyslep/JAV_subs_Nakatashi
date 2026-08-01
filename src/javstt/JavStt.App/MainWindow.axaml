@@ -24,6 +24,9 @@
           <Border Classes="pill" Cursor="Hand" PointerPressed="OnOptionsPillPressed">
             <TextBlock Text="{Binding Model, StringFormat='모델 {0}'}" FontSize="12" />
           </Border>
+          <Border Classes="pill" ToolTip.Tip="제공자가 청구한 오디오 시간 — 파일 길이가 아니라 실제 발화 구간입니다 (600초 클립이 333초로 청구됨).">
+            <TextBlock Classes="num" Text="{Binding UsageText}" FontSize="12" />
+          </Border>
           <Border Classes="pill">
             <TextBlock Text="{Binding RunState, StringFormat='● {0}'}" FontSize="12" />
           </Border>
@@ -63,6 +66,8 @@
     <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="16,10,16,10">
       <Button Classes="primary" Content="▶ 전사 시작"
               Command="{Binding StartCommand}" IsEnabled="{Binding CanStart}" />
+      <Button Content="{Binding PauseLabel}" Command="{Binding TogglePauseCommand}" IsEnabled="{Binding IsRunning}"
+              ToolTip.Tip="현재 파일을 끝낸 뒤 대기합니다. 다시 누르면 이어서 진행합니다 — 진행분은 그대로 유지됩니다." />
       <Button Content="안전 정지" Command="{Binding SafeStopCommand}" IsEnabled="{Binding IsRunning}"
               ToolTip.Tip="현재 파일을 끝까지 완성한 뒤 정지합니다 — 반쪽 자막을 남기지 않습니다." />
       <Button Classes="danger" Content="정지" Command="{Binding StopCommand}" IsEnabled="{Binding IsRunning}"
