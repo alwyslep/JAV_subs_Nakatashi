@@ -20,6 +20,25 @@ public partial class MainWindow : Window
         this.FindControl<Button>("BtnFiles")!.Click += async (_, _) => await PickFilesAsync();
         this.FindControl<Button>("BtnFolder")!.Click += async (_, _) => await PickFolderAsync();
         this.FindControl<Button>("BtnCopyLog")!.Click += async (_, _) => await CopyLogAsync();
+
+        // ★Floors on both panes. A GridSplitter will happily drag either row to zero, and once the
+        //   queue is zero-height there is nothing left to grab to bring it back.
+        if (this.FindControl<GridSplitter>("QueueLogSplit")?.Parent is Grid grid && grid.RowDefinitions.Count == 3)
+        {
+            grid.RowDefinitions[0].MinHeight = 140;
+            grid.RowDefinitions[2].MinHeight = 90;
+        }
+    }
+
+    /// <summary>Log height the double-click restores - the same 200 the window opens with.</summary>
+    private const double DefaultLogHeight = 200;
+
+    private void OnSplitterDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is GridSplitter { Parent: Grid grid } && grid.RowDefinitions.Count == 3)
+        {
+            grid.RowDefinitions[2].Height = new GridLength(DefaultLogHeight, GridUnitType.Pixel);
+        }
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

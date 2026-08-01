@@ -9,6 +9,7 @@
     <AssemblyName>javstt</AssemblyName>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>javstt.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <!-- The Skia and HarfBuzz symbol files are 100 MB of the 160 MB payload and mean nothing to a
          user running a released build. DebugType alone only drops this project's own pdb - the
@@ -56,6 +57,9 @@
          Pretendard JP is what stops kanji falling back to the OS face mid-line. -->
     <AvaloniaResource Include="..\..\ui\Assets\Fonts\*.otf" Link="Assets\Fonts\%(Filename)%(Extension)" />
     <AvaloniaResource Include="..\..\ui\Assets\Fonts\*.txt" Link="Assets\Fonts\%(Filename)%(Extension)" />
+    <!-- ApplicationIcon covers the exe and the taskbar; this covers the window's own title-bar
+         icon, which Avalonia reads from resources rather than from the PE header. -->
+    <AvaloniaResource Include="javstt.ico" />
   </ItemGroup>
 
 </Project>
