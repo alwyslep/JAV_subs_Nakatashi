@@ -706,6 +706,145 @@ public class OpenAiSttServiceTests
         return resp;
     }
 
+    // ---- Fork addition: transient-failure retry -------------------------------------------------
+    // Both cases below were observed in one end-to-end run of a single 3h17m film: a 500 that
+    // succeeded on an identical retry, and a 429 carrying the provider's own wait. The caller
+    // aborts the whole transcription on any chunk failure, so neither may be fatal on its own.
+
+    [Fact]
+    public async Task TranscribeAsync_RetriesA500AndReplaysTheBody()
+    {
+        var attempts = 0;
+        var uploadedBytes = new List<long>();
+
+        using var handler = new StubHandler(async (req, ct) =>
+        {
+            attempts++;
+            // Read the body every time: a retry that forgot to rewind the stream would send 0 bytes.
+            uploadedBytes.Add((await req.Content!.ReadAsByteArrayAsync(ct)).Length);
+
+            return attempts == 1
+                ? new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                {
+                    Content = new StringContent("{\"error\":{\"message\":\"Internal Server Error\"}}"),
+                }
+                : JsonResponse("{\"text\":\"ok\",\"segments\":[]}");
+        });
+
+        using var client = new HttpClient(handler);
+        var service = new OpenAiSttService(client, MakeSettings());
+
+        var wav = MakeTinyWav();
+        try
+        {
+            var response = await service.TranscribeAsync(wav, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal("ok", response.Text);
+            Assert.Equal(2, attempts);
+            Assert.Equal(uploadedBytes[0], uploadedBytes[1]);
+            Assert.True(uploadedBytes[1] > 0, "the replayed request sent an empty body - the stream was not rewound");
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+
+    // A request that is wrong stays wrong; retrying it only delays the message the user needs.
+    [Fact]
+    public async Task TranscribeAsync_DoesNotRetryA400()
+    {
+        var attempts = 0;
+        using var handler = new StubHandler((req, ct) =>
+        {
+            attempts++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent("{\"error\":{\"message\":\"unknown model\"}}"),
+            });
+        });
+
+        using var client = new HttpClient(handler);
+        var service = new OpenAiSttService(client, MakeSettings());
+
+        var wav = MakeTinyWav();
+        try
+        {
+            await Assert.ThrowsAsync<HttpRequestException>(
+                () => service.TranscribeAsync(wav, cancellationToken: TestContext.Current.CancellationToken));
+
+            Assert.Equal(1, attempts);
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+
+    [Fact]
+    public void IsRetryable_CoversTransientStatusesOnly()
+    {
+        Assert.True(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.TooManyRequests)));
+        Assert.True(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.InternalServerError)));
+        Assert.True(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.BadGateway)));
+        Assert.True(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.ServiceUnavailable)));
+        Assert.True(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.GatewayTimeout)));
+        Assert.True(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.RequestTimeout)));
+
+        // No status at all means the request never got an answer - replayable.
+        Assert.True(OpenAiSttService.IsRetryable(new HttpRequestException("connection reset")));
+
+        Assert.False(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.BadRequest)));
+        Assert.False(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.Unauthorized)));
+        Assert.False(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.NotFound)));
+        // The chunk-too-big case: retrying an oversized upload just spends the quota again.
+        Assert.False(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.RequestEntityTooLarge)));
+    }
+
+    // ★The server knows when its quota window rolls over; a guess would either come back too
+    //   early and burn an attempt, or wait far longer than needed.
+    [Fact]
+    public void GetRetryDelay_PrefersRetryAfterOverBackoff()
+    {
+        var ex = new HttpRequestException("x", null, HttpStatusCode.TooManyRequests);
+        ex.Data[OpenAiSttService.RetryAfterKey] = 42.0;
+
+        Assert.Equal(TimeSpan.FromSeconds(42), OpenAiSttService.GetRetryDelay(ex, 0));
+    }
+
+    [Fact]
+    public void GetRetryDelay_CapsBothPathsSoTheRunNeverLooksHung()
+    {
+        var withHugeRetryAfter = new HttpRequestException("x", null, HttpStatusCode.TooManyRequests);
+        withHugeRetryAfter.Data[OpenAiSttService.RetryAfterKey] = 86_400.0;
+        Assert.Equal(OpenAiSttService.MaxRetryDelay, OpenAiSttService.GetRetryDelay(withHugeRetryAfter, 0));
+
+        var plain = new HttpRequestException("x", null, HttpStatusCode.InternalServerError);
+        Assert.Equal(TimeSpan.FromSeconds(2), OpenAiSttService.GetRetryDelay(plain, 0));
+        Assert.Equal(TimeSpan.FromSeconds(8), OpenAiSttService.GetRetryDelay(plain, 1));
+        Assert.True(OpenAiSttService.GetRetryDelay(plain, 9) <= OpenAiSttService.MaxRetryDelay);
+    }
+
+    [Fact]
+    public void ReadRetryAfterSeconds_HandlesBothHeaderShapes()
+    {
+        using var delta = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+        delta.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(30));
+        Assert.Equal(30, OpenAiSttService.ReadRetryAfterSeconds(delta));
+
+        using var date = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+        date.Headers.RetryAfter = new RetryConditionHeaderValue(DateTimeOffset.UtcNow.AddMinutes(2));
+        Assert.True(OpenAiSttService.ReadRetryAfterSeconds(date) > 60);
+
+        // A date already in the past must not become a negative wait.
+        using var past = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+        past.Headers.RetryAfter = new RetryConditionHeaderValue(DateTimeOffset.UtcNow.AddMinutes(-5));
+        Assert.Null(OpenAiSttService.ReadRetryAfterSeconds(past));
+
+        using var none = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+        Assert.Null(OpenAiSttService.ReadRetryAfterSeconds(none));
+    }
+
     // Runs IProgress callbacks inline (no SynchronizationContext / thread-pool marshaling), so progress
     // reported synchronously by the service is observed deterministically and without a data race.
     private sealed class SyncProgress<T> : IProgress<T>

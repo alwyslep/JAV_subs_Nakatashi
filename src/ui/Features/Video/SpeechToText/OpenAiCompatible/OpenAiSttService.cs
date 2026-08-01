@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -55,6 +56,19 @@ public class OpenAiSttService : ISttTranscriber
     private readonly HttpClient _httpClient;
     private readonly OpenAiCompatibleSettings _settings;
 
+    /// <summary>
+    /// Fork addition. The transcription prompt actually sent, so a caller that knows which film is
+    /// being transcribed can extend the configured one with that film's own recorded names.
+    /// ★Settable after construction because the settings are read from global config inside
+    ///   <see cref="GetSettingsFromConfiguration"/>, which has no way to know the video file.
+    ///   See <see cref="Logic.JavData.SttPrompt"/> for what is added and why it matters.
+    /// </summary>
+    public string Prompt
+    {
+        get => _settings.Prompt;
+        set => _settings.Prompt = value;
+    }
+
     public OpenAiSttService(OpenAiCompatibleSettings settings)
         : this(SharedHttpClient, settings)
     {
@@ -88,24 +102,180 @@ public class OpenAiSttService : ISttTranscriber
         IProgress<OpenAiCompatibleSegment>? segmentProgress = null,
         CancellationToken cancellationToken = default)
     {
-        // Apply the per-call deadline via a linked CTS rather than the shared
-        // HttpClient.Timeout, so the shared client stays unmodified.
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        if (_settings.TimeoutSeconds > 0)
+        // Fork addition: retry transient failures instead of losing the run.
+        //
+        // ★Both failure modes below were hit in a single end-to-end run of one 3h17m film
+        //   (2 chunks): chunk 2 came back 500 "Internal Server Error" and succeeded on the very
+        //   next identical request, and a later attempt came back 429 with the provider's own
+        //   "try again in 3m31s". The caller aborts the whole transcription on any chunk failure,
+        //   so on a 4-chunk film either of those silently costs a quarter of the subtitle. A
+        //   provider that publishes a per-hour audio quota (Groq: 7,200 s/h on the free tier)
+        //   makes 429 the expected case for long files, not an edge case.
+        //
+        // ★Only replayable streams are retried. Re-POSTing needs the body from the beginning, so
+        //   a non-seekable stream gets exactly one attempt - the same behaviour as before.
+        var startPosition = audioStream.CanSeek ? audioStream.Position : -1L;
+
+        for (var attempt = 0; ; attempt++)
         {
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(_settings.TimeoutSeconds));
+            // A fresh deadline per attempt: the timeout is meant to bound one request, and
+            // sharing one CTS across retries would let the first slow attempt consume it.
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            if (_settings.TimeoutSeconds > 0)
+            {
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(_settings.TimeoutSeconds));
+            }
+
+            try
+            {
+                return await TranscribeCoreAsync(audioStream, fileName, language, progress, segmentProgress, timeoutCts.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Our own timeout fired, not a user cancel — surface it as an error
+                // so the caller doesn't mistake it for cancellation.
+                // ★Deliberately not retried: the deadline is already the caller's patience, and
+                //   three more full-length attempts would quadruple it without new information.
+                throw new TimeoutException($"STT request timed out after {_settings.TimeoutSeconds} seconds.");
+            }
+            catch (HttpRequestException ex)
+                when (attempt < MaxTransientRetries && startPosition >= 0 && IsRetryable(ex))
+            {
+                var delay = GetRetryDelay(ex, attempt);
+                var reason = ex.StatusCode.HasValue ? $"HTTP {(int)ex.StatusCode.Value}" : "network error";
+                var message =
+                    $"STT {reason} on \"{fileName}\" — retrying in {delay.TotalSeconds:N0}s " +
+                    $"(attempt {attempt + 2} of {MaxTransientRetries + 1})";
+                _settings.Logger?.Invoke(message);
+                progress?.Report(message);
+
+                await Task.Delay(delay, cancellationToken);
+                audioStream.Position = startPosition;
+            }
+        }
+    }
+
+    /// <summary>How many extra attempts a replayable request gets after the first one fails.</summary>
+    internal const int MaxTransientRetries = 3;
+
+    /// <summary>
+    /// Ceiling on a single wait. ★A provider may ask for a very long pause when an hourly quota
+    /// is spent; past a few minutes it is better to fail with a legible error than to look hung
+    /// with no way to tell the difference.
+    /// </summary>
+    internal static readonly TimeSpan MaxRetryDelay = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Whether this failure is worth repeating verbatim.
+    /// ★A null status means the request never got an answer (reset connection, DNS blip)
+    ///   — replayable. Everything 4xx except 408/429 is the request's own fault and would
+    ///   fail identically, so retrying it only delays the error the user needs to read.
+    /// </summary>
+    internal static bool IsRetryable(HttpRequestException exception)
+    {
+        if (exception.StatusCode is not { } status)
+        {
+            return true;
         }
 
-        try
+        return status is HttpStatusCode.RequestTimeout
+            or HttpStatusCode.TooManyRequests
+            or HttpStatusCode.InternalServerError
+            or HttpStatusCode.BadGateway
+            or HttpStatusCode.ServiceUnavailable
+            or HttpStatusCode.GatewayTimeout;
+    }
+
+    /// <summary>
+    /// How long to wait before the next attempt.
+    /// ★The server's own Retry-After wins when it sent one: on a quota rejection it knows when
+    ///   the window rolls over and a guess would either come back too early (burning an attempt)
+    ///   or wait far longer than needed. Otherwise back off exponentially from 2s.
+    /// </summary>
+    internal static TimeSpan GetRetryDelay(HttpRequestException exception, int attempt)
+    {
+        if (exception.Data[RetryAfterKey] is double seconds && seconds > 0)
         {
-            return await TranscribeCoreAsync(audioStream, fileName, language, progress, segmentProgress, timeoutCts.Token);
+            return TimeSpan.FromSeconds(Math.Min(seconds, MaxRetryDelay.TotalSeconds));
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+
+        var backoff = TimeSpan.FromSeconds(2 * Math.Pow(4, attempt));
+        return backoff > MaxRetryDelay ? MaxRetryDelay : backoff;
+    }
+
+    /// <summary>Key under which <see cref="TranscribeCoreAsync"/> stashes a Retry-After value.</summary>
+    internal const string RetryAfterKey = "RetryAfterSeconds";
+
+    /// <summary>
+    /// Fork addition. Passes reads through but swallows Dispose, so the request body can be built
+    /// from a stream the caller still owns and can rewind for a retry.
+    /// ★Read-only on purpose: the only use is an upload body, and leaving Write unsupported means a
+    ///   future caller cannot quietly acquire a writable handle to someone else's stream.
+    /// </summary>
+    private sealed class NonClosingStream : Stream
+    {
+        private readonly Stream _inner;
+
+        public NonClosingStream(Stream inner) => _inner = inner;
+
+        public override bool CanRead => _inner.CanRead;
+        public override bool CanSeek => _inner.CanSeek;
+        public override bool CanWrite => false;
+        public override long Length => _inner.Length;
+
+        public override long Position
         {
-            // Our own timeout fired, not a user cancel — surface it as an error
-            // so the caller doesn't mistake it for cancellation.
-            throw new TimeoutException($"STT request timed out after {_settings.TimeoutSeconds} seconds.");
+            get => _inner.Position;
+            set => _inner.Position = value;
         }
+
+        public override void Flush() => _inner.Flush();
+
+        public override int Read(byte[] buffer, int offset, int count) => _inner.Read(buffer, offset, count);
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => _inner.ReadAsync(buffer, offset, count, cancellationToken);
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            => _inner.ReadAsync(buffer, cancellationToken);
+
+        public override long Seek(long offset, SeekOrigin origin) => _inner.Seek(offset, origin);
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        // The caller owns the stream - the file-path overload's own `using` closes it.
+        protected override void Dispose(bool disposing)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Retry-After as seconds, or null when the response carries none.
+    /// ★RFC 9110 allows either delta-seconds or an HTTP-date, and providers use both; a date in
+    ///   the past yields null rather than a negative wait.
+    /// </summary>
+    internal static double? ReadRetryAfterSeconds(HttpResponseMessage response)
+    {
+        var retryAfter = response.Headers.RetryAfter;
+        if (retryAfter == null)
+        {
+            return null;
+        }
+
+        if (retryAfter.Delta is { } delta)
+        {
+            return delta.TotalSeconds > 0 ? delta.TotalSeconds : null;
+        }
+
+        if (retryAfter.Date is { } date)
+        {
+            var seconds = (date - DateTimeOffset.UtcNow).TotalSeconds;
+            return seconds > 0 ? seconds : null;
+        }
+
+        return null;
     }
 
     private async Task<OpenAiCompatibleSttResponse> TranscribeCoreAsync(
@@ -126,7 +296,11 @@ public class OpenAiSttService : ISttTranscriber
         // file's extension isn't one we recognise, and never mutate _settings.
         var effectiveFormat = ResolveEffectiveFormat(fileName);
         var uploadFileName = NormalizeUploadFileName(fileName, effectiveFormat);
-        var fileContent = new StreamContent(audioStream);
+        // ★NonClosingStream, not audioStream: StreamContent disposes what it wraps, the multipart
+        //   content owns it, and the `using` above therefore closed the caller's stream after the
+        //   FIRST attempt - so the retry in TranscribeAsync replayed into an ObjectDisposedException
+        //   instead of resending. Caught by the retry test, not by reading the code.
+        var fileContent = new StreamContent(new NonClosingStream(audioStream));
         fileContent.Headers.ContentType = new MediaTypeHeaderValue(GetMediaTypeForFormat(effectiveFormat));
 
         // Add model
@@ -226,11 +400,21 @@ public class OpenAiSttService : ISttTranscriber
             // Carry the status code on the exception: the caller turns a 4xx that
             // complains about "model" into a hint about the Model field, and
             // sniffing the number back out of the message is fragile (issue #12877).
-            throw new HttpRequestException(
+            var failure = new HttpRequestException(
                 $"STT request failed with status {statusCode} ({response.StatusCode}) " +
                 $"calling {safeEndpoint}. Response: {errorContent}",
                 null,
                 response.StatusCode);
+
+            // Fork addition: carry Retry-After to the retry loop in TranscribeAsync. It rides in
+            // Data rather than a new exception type because the caller already inspects
+            // HttpRequestException.StatusCode (see above) and must keep working unchanged.
+            if (ReadRetryAfterSeconds(response) is { } retryAfterSeconds)
+            {
+                failure.Data[RetryAfterKey] = retryAfterSeconds;
+            }
+
+            throw failure;
         }
 
         // Check if streaming (SSE)

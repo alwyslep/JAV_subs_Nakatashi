@@ -16,6 +16,7 @@ using Nikse.SubtitleEdit.Features.Video.SpeechToText.OpenAiCompatible;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.Download;
+using Nikse.SubtitleEdit.Logic.JavData;
 using Nikse.SubtitleEdit.Logic.Media;
 using Nikse.SubtitleEdit.UiLogic;
 using Optris.Icons.Avalonia;
@@ -1144,6 +1145,22 @@ public partial class SpeechToTextViewModel : ObservableObject
                 IsTranscribeEnabled = true;
             });
             return;
+        }
+
+        // Fork addition. Extend the configured prompt with this film's own recorded names before
+        // the first request goes out. Both transcription paths below - single file and chunked -
+        // reuse this one transcriber, so setting it here covers every chunk of a long film.
+        // ★An empty result means "nothing to add", never "clear it": the configured prompt is the
+        //   user's, and it is also what suppresses Whisper's non-speech hallucination. See
+        //   SttPrompt for the measurements.
+        if (transcriber is OpenAiSttService openAiStt)
+        {
+            var filmPrompt = SttPrompt.Build(_videoFileName, Se.Settings.Tools.OpenAiCompatibleSttPrompt);
+            if (filmPrompt.Length > 0)
+            {
+                openAiStt.Prompt = filmPrompt;
+                LogToConsole($"Speech to text: prompt extended with this film's recorded names ({filmPrompt.Length} chars){Environment.NewLine}");
+            }
         }
 
         ProgressText = Se.Language.Video.AudioToText.Transcribing;
