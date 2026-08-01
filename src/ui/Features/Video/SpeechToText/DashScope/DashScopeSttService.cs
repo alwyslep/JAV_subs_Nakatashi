@@ -134,20 +134,7 @@ public class DashScopeSttService : ISttTranscriber
 
         var key = $"{policy.UploadDir}/{fileName}";
 
-        using var form = new MultipartFormDataContent
-        {
-            { new StringContent(policy.OssAccessKeyId), "OSSAccessKeyId" },
-            { new StringContent(policy.Policy), "policy" },
-            { new StringContent(policy.Signature), "Signature" },
-            { new StringContent(key), "key" },
-            { new StringContent(policy.XOssObjectAcl), "x-oss-object-acl" },
-            { new StringContent(policy.XOssForbidOverwrite), "x-oss-forbid-overwrite" },
-            { new StringContent("200"), "success_action_status" },
-        };
-        var fileContent = new ByteArrayContent(audioBytes);
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-        form.Add(fileContent, "file", fileName); // file field must be last
-
+        using var form = BuildOssUploadForm(policy, key, fileName, audioBytes);
         using var uploadResponse = await _httpClient.PostAsync(policy.UploadHost, form, ct);
         if (!uploadResponse.IsSuccessStatusCode)
         {
@@ -236,29 +223,144 @@ public class DashScopeSttService : ISttTranscriber
     /// Serialize the async submit body. <c>enable_words</c> adds word-level
     /// timings; a fixed language is sent only when the user set one.
     /// </summary>
+    /// <summary>
+    /// Builds the OSS PostObject body.
+    ///
+    /// ★This is its own method because getting it wrong is invisible: the default
+    ///   <see cref="MultipartFormDataContent"/> encoding is rejected with
+    ///   <c>MalformedPOSTRequest</c>, which is how the DashScope engine came to fail at its very
+    ///   first upload and therefore never transcribe anything. Three rules, each probed against the
+    ///   live bucket rather than guessed:
+    ///     ①every part name must be QUOTED - .NET writes <c>name=policy</c> for simple names
+    ///     ②the boundary must NOT be quoted - .NET writes <c>boundary="…"</c> in Content-Type
+    ///     ③the file part carries no Content-Type - OSS wants Content-Disposition first when both
+    ///       are present, and <see cref="System.Net.Http.Headers.HttpContentHeaders"/> gives no way
+    ///       to order them
+    ///   Measured on ①②: bare+quoted 400, quoted+quoted 400, bare+bare 400, quoted+bare 200.
+    ///   Measured on ③: Disposition-then-Type 200, Type-then-Disposition 400, no Content-Type 200.
+    /// </summary>
+    internal static MultipartFormDataContent BuildOssUploadForm(
+        DashScopeUploadPolicy policy, string key, string fileName, byte[] audioBytes)
+    {
+        var boundary = Guid.NewGuid().ToString("N");
+        var form = new MultipartFormDataContent(boundary);
+        AddQuotedField(form, "OSSAccessKeyId", policy.OssAccessKeyId);
+        AddQuotedField(form, "policy", policy.Policy);
+        AddQuotedField(form, "Signature", policy.Signature);
+        AddQuotedField(form, "key", key);
+        AddQuotedField(form, "x-oss-object-acl", policy.XOssObjectAcl);
+        AddQuotedField(form, "x-oss-forbid-overwrite", policy.XOssForbidOverwrite);
+        AddQuotedField(form, "success_action_status", "200");
+
+        var fileContent = new ByteArrayContent(audioBytes);
+        fileContent.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data")
+        {
+            Name = "\"file\"",
+            FileName = "\"" + fileName + "\"",
+        };
+        form.Add(fileContent); // file field must be last
+
+        form.Headers.Remove("Content-Type");
+        form.Headers.TryAddWithoutValidation("Content-Type", "multipart/form-data; boundary=" + boundary);
+        return form;
+    }
+
+    /// <summary>
+    /// Adds one OSS PostObject form field with its name explicitly quoted.
+    /// ★<see cref="ContentDispositionHeaderValue.Name"/> leaves an already-quoted value alone, so
+    ///   passing the quotes in is what forces <c>name="policy"</c> instead of <c>name=policy</c>.
+    ///   Also drops the <c>text/plain</c> Content-Type StringContent would otherwise attach.
+    /// </summary>
+    private static void AddQuotedField(MultipartFormDataContent form, string name, string value)
+    {
+        var content = new StringContent(value);
+        content.Headers.ContentType = null;
+        content.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data")
+        {
+            Name = "\"" + name + "\"",
+        };
+        form.Add(content);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="model"/> belongs to the Fun-ASR / Paraformer family, which speaks a
+    /// different dialect of this same endpoint.
+    ///
+    /// ★Not cosmetic. Sending the Qwen shape to Fun-ASR fails outright with
+    ///   <c>InvalidParameter: input must contain file_urls</c>, and the two families also disagree
+    ///   on the language field. Verified against the live API for both.
+    /// </summary>
+    internal static bool IsFunAsrFamily(string? model)
+    {
+        var m = (model ?? string.Empty).Trim();
+        return m.StartsWith("fun-asr", StringComparison.OrdinalIgnoreCase)
+            || m.StartsWith("paraformer", StringComparison.OrdinalIgnoreCase);
+    }
+
     internal static string BuildSubmitBody(DashScopeSttSettings settings, string fileUrl, string? language)
     {
         var languageToUse = language ?? settings.Language;
+        var model = string.IsNullOrWhiteSpace(settings.Model) ? "qwen3-asr-flash-filetrans" : settings.Model;
+        var funAsr = IsFunAsrFamily(model);
 
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
         {
             writer.WriteStartObject();
-            writer.WriteString("model", string.IsNullOrWhiteSpace(settings.Model) ? "qwen3-asr-flash-filetrans" : settings.Model);
+            writer.WriteString("model", model);
 
             writer.WritePropertyName("input");
             writer.WriteStartObject();
-            writer.WriteString("file_url", fileUrl);
+            if (funAsr)
+            {
+                // Fun-ASR takes a batch even for one file, and answers with output.results[] to
+                // match - which PollTaskAsync already reads alongside the singular shape.
+                writer.WritePropertyName("file_urls");
+                writer.WriteStartArray();
+                writer.WriteStringValue(fileUrl);
+                writer.WriteEndArray();
+            }
+            else
+            {
+                writer.WriteString("file_url", fileUrl);
+            }
+
             writer.WriteEndObject();
 
             writer.WritePropertyName("parameters");
             writer.WriteStartObject();
             writer.WriteBoolean("enable_itn", false);
             writer.WriteBoolean("enable_words", settings.EnableWords);
+
             if (!string.IsNullOrWhiteSpace(languageToUse) && languageToUse != "auto")
             {
-                writer.WriteString("language", languageToUse);
+                if (funAsr)
+                {
+                    writer.WritePropertyName("language_hints");
+                    writer.WriteStartArray();
+                    writer.WriteStringValue(languageToUse);
+                    writer.WriteEndArray();
+                }
+                else
+                {
+                    writer.WriteString("language", languageToUse);
+                }
             }
+
+            // ★Both of these are Fun-ASR-only per the model table, and both are silently ignored
+            //   rather than rejected elsewhere - so gate them here instead of letting a stale
+            //   setting travel with a Qwen request and look like it did something.
+            if (funAsr && !string.IsNullOrWhiteSpace(settings.VocabularyId))
+            {
+                writer.WriteString("vocabulary_id", settings.VocabularyId.Trim());
+            }
+
+            if (funAsr && settings.SpeakerCount > 0)
+            {
+                writer.WriteBoolean("diarization_enabled", true);
+                writer.WriteNumber("speaker_count", settings.SpeakerCount);
+            }
+
             writer.WriteEndObject();
 
             writer.WriteEndObject();
@@ -340,6 +442,8 @@ public class DashScopeSttService : ISttTranscriber
             Region = tools.DashScopeSttRegion,
             EnableWords = tools.DashScopeSttEnableWords,
             TimeoutSeconds = tools.DashScopeSttTimeoutSeconds,
+            VocabularyId = tools.DashScopeSttVocabularyId,
+            SpeakerCount = tools.DashScopeSttSpeakerCount,
             Logger = Se.WriteToolsLog,
         };
     }
@@ -353,6 +457,13 @@ public class DashScopeSttSettings
     public string Region { get; set; } = "international";
     public bool EnableWords { get; set; }
     public int TimeoutSeconds { get; set; } = 3600;
+
+    /// <summary>Hotword list id from the speech-biasing API. Fun-ASR / Paraformer only.</summary>
+    public string VocabularyId { get; set; } = string.Empty;
+
+    /// <summary>Speakers to separate, or 0 for no diarization. Fun-ASR offline only.</summary>
+    public int SpeakerCount { get; set; }
+
     public Action<string>? Logger { get; set; }
 }
 

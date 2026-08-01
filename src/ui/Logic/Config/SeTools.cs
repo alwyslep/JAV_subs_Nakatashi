@@ -146,6 +146,21 @@ public class SeTools
     public bool DashScopeSttEnableWords { get; set; }
     public int DashScopeSttTimeoutSeconds { get; set; } = 3600;
 
+    /// <summary>
+    /// Fork addition. A hotword list created with DashScope's speech-biasing API, applied to the
+    /// transcription so the recogniser prefers spellings already recorded for the material.
+    /// ★Fun-ASR / Paraformer only - measured: qwen3-asr-flash rejects nothing but ignores it, and
+    ///   the docs list hotwords as unsupported for that family.
+    /// </summary>
+    public string DashScopeSttVocabularyId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Fork addition. Number of speakers to separate, or 0 to leave diarization off.
+    /// ★Fun-ASR offline only. This is the one field here that answers the fork's actual question -
+    ///   who is speaking to whom - from the audio rather than from metadata.
+    /// </summary>
+    public int DashScopeSttSpeakerCount { get; set; }
+
     public List<string> FindHistory { get; set; } = new List<string>();
     public bool AllowSingleLetterShortcutsInTextbox { get; set; }
 
