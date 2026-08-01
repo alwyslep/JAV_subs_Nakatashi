@@ -155,9 +155,19 @@ public class SeTools
     public string DashScopeSttVocabularyId { get; set; } = string.Empty;
 
     /// <summary>
-    /// Fork addition. Number of speakers to separate, or 0 to leave diarization off.
-    /// ★Fun-ASR offline only. This is the one field here that answers the fork's actual question -
-    ///   who is speaking to whom - from the audio rather than from metadata.
+    /// Fork addition. Number of speakers to separate, or 0 to leave diarization off. Fun-ASR
+    /// offline only.
+    ///
+    /// ★Default 0, and that is a measurement rather than caution. The hope was that this answers
+    ///   the fork's actual question - who is speaking to whom - from the audio instead of from
+    ///   metadata. It does not, on this material: over a 10-minute two-person scene the labels came
+    ///   back 38 and 67 lines, and BOTH were dominated by the polite register (3 rough / 9 polite
+    ///   and 1 rough / 19 polite). A working split would have put the rough register on one label.
+    ///   Commanding lines - <c>そのまま突き出しなさい</c>, <c>なんでダメなんだ</c> - landed on both,
+    ///   and the label flipped between consecutive cues 39% of the time. Overlapping vocalisation
+    ///   and breathing are the conditions diarization is worst at, and this library is made of them.
+    ///   Left wired because the cost of asking is a JSON field; do not build on it without
+    ///   re-measuring.
     /// </summary>
     public int DashScopeSttSpeakerCount { get; set; }
 
