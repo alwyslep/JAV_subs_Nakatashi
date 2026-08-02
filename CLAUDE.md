@@ -456,6 +456,35 @@ The run also produced a post-mortem worth more than the verdict:
 `.gitignore` excludes `.claude/`, so it is **local-only and not in the repo** — recreate it by hand
 on a fresh clone.
 
+## Sibling project: `javstt` — and why it left this repository (2026-08-02)
+
+`C:\Users\geech\dev2\jav\subtitles\javstt` (repo `alwyslep/javstt`) is the transcription tool. It
+lived here at **`src/javstt`** from 2026-08-02 morning until that evening, when it was moved out.
+If you are looking for that directory in the history, it is at `8a2543c76` and earlier.
+
+It was a separate *solution* while it was here, but not a separate *program*: its commits landed in
+this repository's history, `git status` here showed that work, and **seven paths reached sideways**
+into `../../ui` and `../../libse`. Moving the folder alone would have broken the build, so the move
+had to settle the dependency question, not dodge it.
+
+**This repository is now a pinned git submodule of that one** (`third_party/JAV_subs_Nakatashi`,
+pinned at `8a2543c76`). Consequences that matter from *this* side:
+
+- **A sync here cannot break javstt.** It builds against the pin, not against your working tree.
+  Nothing propagates until someone over there moves the pin on purpose.
+- **`DashScopeSttService.cs`, the three STT engine interface files, `NakatashiPalette.cs` and
+  `Assets/Fonts/*` are still compiled by javstt as source links** — so those files now have a
+  second consumer. Changing their *shape* (not their behaviour) breaks javstt at its next pin bump.
+  The engine file in particular must not fork: its `BuildOssUploadForm` OSS PostObject rules took a
+  live four-way probe against the bucket to establish.
+- `LibSE` and `LibUiLogic` are project references from javstt. `LibUiLogic` sets
+  `IsPackable=false`, which is why a NuGet package route was not taken — it would have needed a
+  change here.
+- **Nothing in this repository references javstt** (verified by grep at the time of the move), and
+  `SubtitleEdit.sln` never contained it. Removing it changed no build here.
+
+`.claude/settings.json` is per-repository, so javstt needs its own allowlist.
+
 ## Toolchain
 
 | Requirement | Needed | Verified on this machine |
