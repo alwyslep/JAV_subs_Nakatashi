@@ -483,6 +483,51 @@ pinned at `8a2543c76`). Consequences that matter from *this* side:
 - **Nothing in this repository references javstt** (verified by grep at the time of the move), and
   `SubtitleEdit.sln` never contained it. Removing it changed no build here.
 
+### The fix flows BOTH ways (owner's rule, 2026-08-02)
+
+Independence is about repositories, not about behaviour: **a fix made in javstt to code that exists
+here must be carried over here too.** Otherwise the tool quietly becomes the only place the bug is
+fixed, and the next person reading this code learns the wrong thing.
+
+Mechanically there are two classes, and only one of them can drift:
+
+| | |
+|---|---|
+| The engine files, `NakatashiPalette.cs`, `Assets/Fonts/*` | **Cannot drift** — javstt compiles them as source links out of the submodule, so there is one copy |
+| The post-processing chain | **Can drift** — javstt had to vendor it (the original reaches into `Se.Settings` and takes an `Avalonia.Media.Color`, neither of which exists there) |
+
+`JavStt.Tests/SubtitleEditSyncTests.cs` is the enforcement. It reads **this repository's actual
+source out of the submodule** and asserts, per item, that the relationship is still what was
+recorded — a fix made there and not carried here fails it by name, a change made here that javstt
+has not accounted for fails it by name, and a divergence that is deliberate is asserted *as* a
+divergence so it stays visible instead of becoming folklore.
+
+**Carried over so far** (`SpeechToTextPostProcessor.cs`, found while building javstt's port):
+
+- `MergeShortLines` selected its CJK character cap on `language == "jp"` and `language == "cn"`.
+  **Neither code exists in this application.** `WhisperLanguage`'s own list declares `ja`, `zh` and
+  `yue`; the online engines send their hint; Google auto-detect returns ISO codes. So both branches
+  were dead and Japanese and Chinese merged against the **Latin limit of 86** instead of their own
+  32 and 36.
+- `IsNonStandardLineTerminationLanguage` listed `jp/ja/cn/yue` but **not `zh`** — so Chinese was not
+  recognised as a language whose lines do not terminate the Latin way, and `AddPeriods` appended
+  `.` to Chinese subtitles while the whitespace line splitter ran on text that has none. This was
+  the worst of the three. That the same method already listed `ja` is what makes all of it an
+  oversight rather than a deliberate spelling.
+
+`tests/UI/Features/Video/SpeechToText/PostProcessorLanguageCodeTests.cs` locks them. Verified to
+have teeth: with the fix reverted, 3 of its 11 tests fail.
+
+**Deliberately NOT carried over**, and asserted as divergences on javstt's side:
+
+- **Capping a long cue by pulling the END back.** `SpeechToTextTimingFixer.ShortenLongDuration`
+  pulls the START forward, which hides the first word of speech that is really there. That is wrong
+  for Fun-ASR output, where the surplus is at the end. It is *not* obviously wrong for Whisper, and
+  this fork has measured nothing about Whisper — so the editor keeps its behaviour.
+- **Japanese line breaking.** javstt adds a 禁則処理-aware breaker because this editor's chain leaves
+  a Japanese cue as one unbroken line. Bringing it here is a real feature (settings entry, UI,
+  language strings for 32 files), not a port. Worth doing; not done.
+
 `.claude/settings.json` is per-repository, so javstt needs its own allowlist.
 
 ## Toolchain

@@ -138,9 +138,19 @@ namespace Nikse.SubtitleEdit.Features.Video.SpeechToText
             return postProcessed;
         }
 
+        /// <summary>
+        /// Languages written without spaces between words, where appending a full stop and breaking
+        /// on whitespace both do the wrong thing.
+        ///
+        /// ★"zh" added by this fork. Chinese is offered as <c>zh</c> - that is the code in
+        ///   <c>WhisperLanguage</c>'s own list, and the code Google's auto-detect returns - so it
+        ///   never matched here and Chinese transcripts went through AddPeriods (appending "." to a
+        ///   line ending in a Chinese character) and through the whitespace line splitter. "jp" and
+        ///   "cn" are kept: nothing in this path produces them, but a caller elsewhere might.
+        /// </summary>
         private static bool IsNonStandardLineTerminationLanguage(string language)
         {
-            return language is "jp" or "ja" or "cn" or "yue";
+            return language is "jp" or "ja" or "cn" or "zh" or "yue";
         }
 
         public Subtitle Fix(Subtitle subtitle, bool usePostProcessing, bool addPeriods, bool mergeLines, bool fixCasing, bool fixShortDuration, bool splitLines, Engine engine)
@@ -275,12 +285,19 @@ namespace Nikse.SubtitleEdit.Features.Video.SpeechToText
             const int maxMillisecondsBetweenLines = 100;
             const bool onlyContinuousLines = true;
 
-            if (language == "jp")
+            // ★"ja" and "zh" added by this fork. These two branches were unreachable: the codes
+            //   this path receives come from WhisperLanguage's own list ("ja", "zh", "yue"), from
+            //   an online engine's language hint, or from Google auto-detect - and none of them
+            //   produces "jp" or "cn". So Japanese and Chinese were merged against the LATIN limit
+            //   of 86 characters rather than their own 32 and 36. The sibling
+            //   IsNonStandardLineTerminationLanguage above already listed "ja", which is what makes
+            //   this an oversight rather than a deliberate spelling.
+            if (language == "jp" || language == "ja")
             {
                 ParagraphMaxChars = AudioToTextLineMaxCharsJp;
             }
 
-            if (language == "cn" || language == "yue")
+            if (language == "cn" || language == "zh" || language == "yue")
             {
                 ParagraphMaxChars = AudioToTextLineMaxCharsCn;
             }
