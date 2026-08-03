@@ -781,69 +781,9 @@ public class OpenAiSttServiceTests
         }
     }
 
-    [Fact]
-    public void IsRetryable_CoversTransientStatusesOnly()
-    {
-        Assert.True(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.TooManyRequests)));
-        Assert.True(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.InternalServerError)));
-        Assert.True(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.BadGateway)));
-        Assert.True(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.ServiceUnavailable)));
-        Assert.True(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.GatewayTimeout)));
-        Assert.True(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.RequestTimeout)));
-
-        // No status at all means the request never got an answer - replayable.
-        Assert.True(OpenAiSttService.IsRetryable(new HttpRequestException("connection reset")));
-
-        Assert.False(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.BadRequest)));
-        Assert.False(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.Unauthorized)));
-        Assert.False(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.NotFound)));
-        // The chunk-too-big case: retrying an oversized upload just spends the quota again.
-        Assert.False(OpenAiSttService.IsRetryable(new HttpRequestException("x", null, HttpStatusCode.RequestEntityTooLarge)));
-    }
-
-    // ★The server knows when its quota window rolls over; a guess would either come back too
-    //   early and burn an attempt, or wait far longer than needed.
-    [Fact]
-    public void GetRetryDelay_PrefersRetryAfterOverBackoff()
-    {
-        var ex = new HttpRequestException("x", null, HttpStatusCode.TooManyRequests);
-        ex.Data[OpenAiSttService.RetryAfterKey] = 42.0;
-
-        Assert.Equal(TimeSpan.FromSeconds(42), OpenAiSttService.GetRetryDelay(ex, 0));
-    }
-
-    [Fact]
-    public void GetRetryDelay_CapsBothPathsSoTheRunNeverLooksHung()
-    {
-        var withHugeRetryAfter = new HttpRequestException("x", null, HttpStatusCode.TooManyRequests);
-        withHugeRetryAfter.Data[OpenAiSttService.RetryAfterKey] = 86_400.0;
-        Assert.Equal(OpenAiSttService.MaxRetryDelay, OpenAiSttService.GetRetryDelay(withHugeRetryAfter, 0));
-
-        var plain = new HttpRequestException("x", null, HttpStatusCode.InternalServerError);
-        Assert.Equal(TimeSpan.FromSeconds(2), OpenAiSttService.GetRetryDelay(plain, 0));
-        Assert.Equal(TimeSpan.FromSeconds(8), OpenAiSttService.GetRetryDelay(plain, 1));
-        Assert.True(OpenAiSttService.GetRetryDelay(plain, 9) <= OpenAiSttService.MaxRetryDelay);
-    }
-
-    [Fact]
-    public void ReadRetryAfterSeconds_HandlesBothHeaderShapes()
-    {
-        using var delta = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
-        delta.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(30));
-        Assert.Equal(30, OpenAiSttService.ReadRetryAfterSeconds(delta));
-
-        using var date = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
-        date.Headers.RetryAfter = new RetryConditionHeaderValue(DateTimeOffset.UtcNow.AddMinutes(2));
-        Assert.True(OpenAiSttService.ReadRetryAfterSeconds(date) > 60);
-
-        // A date already in the past must not become a negative wait.
-        using var past = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
-        past.Headers.RetryAfter = new RetryConditionHeaderValue(DateTimeOffset.UtcNow.AddMinutes(-5));
-        Assert.Null(OpenAiSttService.ReadRetryAfterSeconds(past));
-
-        using var none = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
-        Assert.Null(OpenAiSttService.ReadRetryAfterSeconds(none));
-    }
+    // The retry POLICY these tests used to cover moved to SttRetryPolicyTests when DashScope
+    // started sharing it. What stays here is the OpenAI service's own use of it - that a
+    // replayable stream is rewound and retried, and a non-seekable one is not.
 
     // Runs IProgress callbacks inline (no SynchronizationContext / thread-pool marshaling), so progress
     // reported synchronously by the service is observed deterministically and without a data race.

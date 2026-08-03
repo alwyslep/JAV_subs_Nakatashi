@@ -132,9 +132,11 @@ public class DashScopeSttService : ISttTranscriber
             var transcriptionUrl = await PollTaskAsync(taskId, ct);
 
             _settings.Logger?.Invoke($"DashScope: fetching result from {transcriptionUrl}");
-            using var resultResponse = await _httpClient.GetAsync(transcriptionUrl, HttpCompletionOption.ResponseHeadersRead, ct);
-            resultResponse.EnsureSuccessStatusCode();
-            var resultJson = await resultResponse.Content.ReadAsStringAsync(ct);
+
+            // ★Worth retrying even though the work is done: the task has SUCCEEDED and been billed
+            //   by this point, so losing the download throws away a transcription already paid for.
+            var resultJson = await SendWithRetryAsync(
+                () => new HttpRequestMessage(HttpMethod.Get, transcriptionUrl), "result download", ct);
 
             return ParseTranscriptionResult(resultJson);
         }
@@ -147,6 +149,79 @@ public class DashScopeSttService : ISttTranscriber
     }
 
     /// <summary>
+    /// Fork addition: send one request, retrying the transient failures, and return its body.
+    ///
+    /// ★Per REQUEST, not per transcription. Retrying <see cref="TranscribeAsync"/> as a whole would
+    ///   re-upload the audio and submit a second task - and the provider bills per audio second, so
+    ///   a retry that reached the polling stage would pay for the same film twice. Every request in
+    ///   this flow is built from data already in memory, so each one can simply be made again.
+    ///
+    /// ★<paramref name="newRequest"/> is a factory rather than a message because an
+    ///   <see cref="HttpRequestMessage"/> cannot be sent twice. Building it fresh also rebuilds the
+    ///   body, which is what makes even the multipart upload replayable - the bytes are a
+    ///   <c>byte[]</c> the caller still holds, so there is no stream to rewind.
+    ///
+    /// ★Retries spend the caller's deadline rather than getting a fresh one each. The token here is
+    ///   already <see cref="TranscribeAsync"/>'s timeout-linked one, and it is the whole film's
+    ///   budget - a 429 that keeps being answered slowly should end in the timeout the user set,
+    ///   not extend past it four times over.
+    /// </summary>
+    private async Task<string> SendWithRetryAsync(
+        Func<HttpRequestMessage> newRequest, string what, CancellationToken ct)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            HttpRequestException failure;
+            try
+            {
+                using var request = newRequest();
+                using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+                var body = await response.Content.ReadAsStringAsync(ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    return body;
+                }
+
+                failure = new HttpRequestException(
+                    $"DashScope {what} failed ({(int)response.StatusCode}). Response: {body}",
+                    null,
+                    response.StatusCode);
+
+                // The provider knows when its quota window rolls over; carry that to the policy.
+                if (SttRetryPolicy.ReadRetryAfterSeconds(response) is { } retryAfterSeconds)
+                {
+                    failure.Data[SttRetryPolicy.RetryAfterKey] = retryAfterSeconds;
+                }
+            }
+            catch (HttpRequestException exception)
+            {
+                // Never got an answer - a reset connection or a DNS blip. The policy calls a
+                // status-less failure replayable, so it lands in the same loop.
+                //
+                // ★Rewrapped rather than passed along, so every failure leaving this method names
+                //   the stage it happened at. Raw transport messages do not ("The SSL connection
+                //   could not be established" says nothing about which of the five requests it was),
+                //   and BatchRunner prints exactly this text beside the film that failed. The status
+                //   code is carried across so the policy still sees what it saw.
+                failure = new HttpRequestException(
+                    $"DashScope {what} failed: {exception.Message}", exception, exception.StatusCode);
+            }
+
+            if (attempt >= SttRetryPolicy.MaxTransientRetries || !SttRetryPolicy.IsRetryable(failure))
+            {
+                _settings.Logger?.Invoke(failure.Message);
+                throw failure;
+            }
+
+            var delay = SttRetryPolicy.GetRetryDelay(failure, attempt);
+            _settings.Logger?.Invoke(SttRetryPolicy.DescribeRetry(
+                $"DashScope {what} {SttRetryPolicy.DescribeFailure(failure)}", delay, attempt));
+
+            await Task.Delay(delay, ct);
+        }
+    }
+
+    /// <summary>
     /// Upload the audio to DashScope temporary storage and return its
     /// <c>oss://</c> URL. Two steps: fetch an upload policy, then POST the file
     /// to the returned OSS host with the signed form fields (file field last).
@@ -155,18 +230,16 @@ public class DashScopeSttService : ISttTranscriber
     {
         var model = string.IsNullOrWhiteSpace(_settings.Model) ? "qwen3-asr-flash-filetrans" : _settings.Model;
         var policyUrl = $"{BaseUrl}{UploadsPath}?action=getPolicy&model={Uri.EscapeDataString(model)}";
-        using var policyRequest = new HttpRequestMessage(HttpMethod.Get, policyUrl);
-        policyRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _settings.ApiKey);
+        var policyJson = await SendWithRetryAsync(
+            () =>
+            {
+                var request = new HttpRequestMessage(HttpMethod.Get, policyUrl);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _settings.ApiKey);
+                return request;
+            },
+            $"upload-policy request (GET {policyUrl})",
+            ct);
 
-        using var policyResponse = await _httpClient.SendAsync(policyRequest, HttpCompletionOption.ResponseHeadersRead, ct);
-        if (!policyResponse.IsSuccessStatusCode)
-        {
-            var err = await policyResponse.Content.ReadAsStringAsync(ct);
-            _settings.Logger?.Invoke($"DashScope upload-policy request failed: GET {policyUrl} => {(int)policyResponse.StatusCode}: {err}");
-            throw new HttpRequestException($"DashScope upload-policy request failed ({(int)policyResponse.StatusCode}). Response: {err}");
-        }
-
-        var policyJson = await policyResponse.Content.ReadAsStringAsync(ct);
         var policy = JsonSerializer.Deserialize<DashScopeUploadPolicyResponse>(policyJson,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })?.Data;
         if (policy == null)
@@ -177,14 +250,17 @@ public class DashScopeSttService : ISttTranscriber
 
         var key = $"{policy.UploadDir}/{fileName}";
 
-        using var form = BuildOssUploadForm(policy, key, fileName, audioBytes);
-        using var uploadResponse = await _httpClient.PostAsync(policy.UploadHost, form, ct);
-        if (!uploadResponse.IsSuccessStatusCode)
-        {
-            var err = await uploadResponse.Content.ReadAsStringAsync(ct);
-            _settings.Logger?.Invoke($"DashScope OSS upload failed: POST {policy.UploadHost} => {(int)uploadResponse.StatusCode}: {err}");
-            throw new HttpRequestException($"DashScope OSS upload failed ({(int)uploadResponse.StatusCode}). Response: {err}");
-        }
+        // ★The form is rebuilt per attempt, which is the only reason a 45 MB upload can be retried
+        //   at all: audioBytes is already in memory, so a replay costs bandwidth but needs no
+        //   rewindable stream. An expired policy answers 403, which the policy calls non-retryable,
+        //   so a signature that has gone stale fails once instead of three more times.
+        await SendWithRetryAsync(
+            () => new HttpRequestMessage(HttpMethod.Post, policy.UploadHost)
+            {
+                Content = BuildOssUploadForm(policy, key, fileName, audioBytes),
+            },
+            $"OSS upload (POST {policy.UploadHost})",
+            ct);
 
         return "oss://" + key;
     }
@@ -192,22 +268,23 @@ public class DashScopeSttService : ISttTranscriber
     private async Task<string> SubmitTaskAsync(string ossUrl, string? language, CancellationToken ct)
     {
         var body = BuildSubmitBody(_settings, ossUrl, language);
-        using var content = new StringContent(body, Encoding.UTF8, "application/json");
-        using var request = new HttpRequestMessage(HttpMethod.Post, BaseUrl + TranscriptionPath)
-        {
-            Content = content,
-        };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _settings.ApiKey);
-        request.Headers.TryAddWithoutValidation("X-DashScope-Async", "enable");
-        request.Headers.TryAddWithoutValidation("X-DashScope-OssResourceResolve", "enable");
 
-        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-        var json = await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode)
-        {
-            _settings.Logger?.Invoke($"DashScope async submit failed ({(int)response.StatusCode}): {json}");
-            throw new HttpRequestException($"DashScope async submit failed ({(int)response.StatusCode}). Response: {json}");
-        }
+        // ★This is where a quota rejection actually lands: the account's concurrent-task limit is
+        //   spent at submit time, not at upload time. Losing it used to fail the whole film.
+        var json = await SendWithRetryAsync(
+            () =>
+            {
+                var request = new HttpRequestMessage(HttpMethod.Post, BaseUrl + TranscriptionPath)
+                {
+                    Content = new StringContent(body, Encoding.UTF8, "application/json"),
+                };
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _settings.ApiKey);
+                request.Headers.TryAddWithoutValidation("X-DashScope-Async", "enable");
+                request.Headers.TryAddWithoutValidation("X-DashScope-OssResourceResolve", "enable");
+                return request;
+            },
+            "async submit",
+            ct);
 
         var taskId = JsonSerializer.Deserialize<DashScopeTaskResponse>(json,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })?.Output?.TaskId;
@@ -228,15 +305,20 @@ public class DashScopeSttService : ISttTranscriber
         {
             ct.ThrowIfCancellationRequested();
 
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _settings.ApiKey);
-
-            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-            var json = await response.Content.ReadAsStringAsync(ct);
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new HttpRequestException($"DashScope task poll failed ({(int)response.StatusCode}). Response: {json}");
-            }
+            // ★The retry budget is per poll, so it refreshes on every pass of this loop. That is
+            //   deliberate: a film transcribing for ten minutes polls two hundred times, and one
+            //   429 in the middle says nothing about the next one. A budget shared across the whole
+            //   poll would spend itself on the first bad minute and abandon a task that is still
+            //   running - and the provider has already billed for it by then.
+            var json = await SendWithRetryAsync(
+                () =>
+                {
+                    var request = new HttpRequestMessage(HttpMethod.Get, url);
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _settings.ApiKey);
+                    return request;
+                },
+                "task poll",
+                ct);
 
             var task = JsonSerializer.Deserialize<DashScopeTaskResponse>(json, options);
             var output = task?.Output;
