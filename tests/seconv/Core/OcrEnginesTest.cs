@@ -138,4 +138,43 @@ public class OcrEnginesTest : IDisposable
         Assert.Equal(string.Empty, PaddleOcrEngine.ParseStdout("no recognized text here"));
         Assert.Equal(string.Empty, PaddleOcrEngine.ParseStdout(""));
     }
+
+    // PaddleOCR 3.x dropped the 2.x "('text', conf)" record entirely and prints a Python dict
+    // whose rec_texts holds the strings. Samples below are real paddleocr 3.7.0 stdout with the
+    // numpy arrays shortened the way the CLI itself prints them.
+    [Fact]
+    public void Paddle_ParseStdout_PaddleOcr3_ExtractsRecTexts()
+    {
+        var stdout = """
+            [2026/08/03 11:22:25] paddleocr INFO: Processed item 0 in 5121.5 ms
+            {'res': {'input_path': 'C:\\tmp\\in.png', 'page_index': None, 'dt_polys': array([[[450,  22],
+                    ...,
+                    [450,  86]]], shape=(1, 4, 2), dtype=int16), 'text_type': 'general', 'rec_texts':
+            ['こんにちは世界'], 'rec_scores': array([0.99997437])}}
+            """;
+        Assert.Equal("こんにちは世界", PaddleOcrEngine.ParseStdout(stdout));
+    }
+
+    [Fact]
+    public void Paddle_ParseStdout_PaddleOcr3_JoinsMultipleLines()
+    {
+        var stdout = "{'res': {'rec_texts': ['first line', 'second line'], 'rec_scores': array([0.9, 0.8])}}";
+        Assert.Equal("first line" + Environment.NewLine + "second line", PaddleOcrEngine.ParseStdout(stdout));
+    }
+
+    [Fact]
+    public void Paddle_ParseStdout_PaddleOcr3_UnescapesQuotes()
+    {
+        // Python's repr escapes a quote inside a same-quoted string.
+        var stdout = """"
+            {'res': {'rec_texts': ['it\'s here'], 'rec_scores': array([0.9])}}
+            """";
+        Assert.Equal("it's here", PaddleOcrEngine.ParseStdout(stdout));
+    }
+
+    [Fact]
+    public void Paddle_ParseStdout_PaddleOcr3_EmptyRecTexts_ReturnsEmpty()
+    {
+        Assert.Equal(string.Empty, PaddleOcrEngine.ParseStdout("{'res': {'rec_texts': [], 'rec_scores': array([])}}"));
+    }
 }
