@@ -467,7 +467,23 @@ public class DashScopeSttService : ISttTranscriber
 
             writer.WritePropertyName("parameters");
             writer.WriteStartObject();
-            writer.WriteBoolean("enable_itn", false);
+
+            // ★enable_itn is NOT sent, and its absence is the measured position rather than an
+            //   oversight. It used to go out hardcoded false. Probed live on the same 180 s clip
+            //   with the flag true, false and omitted: fun-asr returned the same text and the same
+            //   Arabic digits in all three, and qwen3-asr-flash-filetrans scored 1.0000 similarity
+            //   true-vs-false. Neither family reads it. It is also absent from the documented
+            //   parameter table for both. Note that this endpoint IGNORES unknown parameters
+            //   silently - a deliberately invented one was accepted and ran - so "the request
+            //   succeeded" was never evidence that it did anything.
+            //
+            // ★enable_words, by contrast, stays and matters - for ONE of the two families:
+            //     fun-asr : no-op. Word timings, with per-word confidence, come back in EVERY
+            //               response whether the flag is true, false or omitted (16 probe arms).
+            //     qwen3   : load-bearing, and not only for timestamps. False returns 10 sentences
+            //               with no words; true returns 55 sentences all carrying words - the same
+            //               628 characters of text, cut into 5.5x as many cues. Deterministic over
+            //               3 runs each. Sending false to that model yields ~18-second cues.
             writer.WriteBoolean("enable_words", settings.EnableWords);
 
             if (!string.IsNullOrWhiteSpace(languageToUse) && languageToUse != "auto")

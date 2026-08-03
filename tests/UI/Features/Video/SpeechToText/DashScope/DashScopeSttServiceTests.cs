@@ -45,8 +45,28 @@ public class DashScopeSttServiceTests
 
         var parameters = root.GetProperty("parameters");
         Assert.True(parameters.GetProperty("enable_words").GetBoolean());
-        Assert.False(parameters.GetProperty("enable_itn").GetBoolean());
         Assert.Equal("ja", parameters.GetProperty("language").GetString());
+    }
+
+    /// <summary>
+    /// <c>enable_itn</c> is deliberately not sent. It used to go out hardcoded false; probed live,
+    /// neither model family reads it (fun-asr returned identical text with it true, false and
+    /// omitted; qwen3 scored 1.0000 similarity true-vs-false), and it is in neither documented
+    /// parameter table. ★Asserted rather than simply deleted because this endpoint accepts unknown
+    /// parameters silently, so nothing would ever fail if it crept back in.
+    /// </summary>
+    [Fact]
+    public void BuildSubmitBody_DoesNotSendEnableItn()
+    {
+        foreach (var model in new[] { "qwen3-asr-flash-filetrans", "fun-asr" })
+        {
+            var settings = MakeSettings();
+            settings.Model = model;
+            var body = DashScopeSttService.BuildSubmitBody(settings, "oss://x/y.mp3", "ja");
+
+            using var doc = JsonDocument.Parse(body);
+            Assert.False(doc.RootElement.GetProperty("parameters").TryGetProperty("enable_itn", out _));
+        }
     }
 
     [Fact]
