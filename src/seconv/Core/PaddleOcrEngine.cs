@@ -140,6 +140,16 @@ internal sealed class PaddleOcrEngine : IOcrEngine
             // only stdout therefore recognises nothing on 3.x and the caller reports "No
             // subtitles recognised". Running the CLI in a terminal hides this, because both
             // streams land on the same console. Parse stdout first, then fall back to stderr.
+            //
+            // DELIBERATE DIVERGENCE from the UI engine (Features/Ocr/Engines/PaddleOcr.cs),
+            // which meets the same problem by passing --save_path and reading one "<n>_res.json"
+            // per image. Its comment calls the stderr dict "truncated", which is true of the
+            // numpy arrays inside it (they print as "array([...], shape=(5,))") but NOT of
+            // rec_texts: that is a plain Python list, and list repr does not elide. Measured on
+            // a 25-line image - all 25 strings present, no "..." in the list. The UI needs the
+            // JSON because it OCRs a whole folder asynchronously and reports per-line progress;
+            // this engine hands over one image per invocation, so reading the stream it already
+            // drains is both sufficient and one less temp directory to manage.
             var text = ParseStdout(stdout);
             return text.Length > 0 ? text : ParseStdout(stderr);
         }
