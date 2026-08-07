@@ -372,19 +372,24 @@ Hard-won facts — do not re-derive:
 
 ## Sibling project: `srt-translator`
 
-`C:\Users\geech\dev2\jav\subtitles\srt-translator` (repo `alwyslep/srt-translator`) is where the
-Japanese→Korean translation actually happens (PySubtrans + Gemini/DeepSeek). **Speech-register
+`C:\Users\geech\dev2\jav\subtitles\srt-translator-register` (repo `alwyslep/srt-translator`) is
+where the Japanese→Korean translation actually happens (PySubtrans + Gemini/DeepSeek). **Speech-register
 (화계) work belongs there, not here** — the relationship information lives only in the Japanese
 role language and is destroyed the moment the Korean SRT exists. Subtitle Edit can only patch
 after the fact. That is still true; what changed is that the editor now patches **into the same
 catalogues**, so a correction made here survives into the next translation run.
 
-A `feat/register` branch is checked out as a **git worktree** at
-`…\subtitles\srt-translator-register` (`git worktree add` does not need a clean tree, so the
-main worktree's in-progress edits stay untouched). Three Python-specific gotchas: venvs are
-per-worktree and `.gitignore` does not cover `.venv/`; `%APPDATA%\AI-SRT-Translator\terminology\`
-is **shared** between worktrees, so an A/B comparison cross-contaminates the term snapshots.
-**Only the main worktree has a `.venv`** — that is the one that actually runs.
+**One install, as of 2026-08-07.** There used to be two: the repo proper at `…\srt-translator`
+plus a `feat/register` worktree at `…\srt-translator-register`. The suffixed one won; the
+unsuffixed path **no longer exists** and any code still pointing at it fails with ImportError.
+The surviving directory is now the repository itself (not a linked worktree) and sits on `main`.
+Its shell identity keeps the `-register` suffix — `%APPDATA%\AI-SRT-Translator-register`,
+AUMID `alwyslep.AiSrtTranslator.register`, Opus add-in `JavSrtTranslateRegister`.
+
+Still shared machine-wide, and still a cross-contamination hazard for A/B runs:
+`%APPDATA%\AI-SRT-Translator\` holds `terminology\`, `quota.json`, `request_daily.json` and
+`model_probe.json` (`paths.SHARED_DIR`). That folder is **not** the old install's leftovers —
+do not delete it. `%TEMP%\srt_translator` is likewise shared by any install.
 
 ### The two branches must both carry the DB contract (2026-07-30)
 
